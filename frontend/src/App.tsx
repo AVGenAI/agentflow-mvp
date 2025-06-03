@@ -983,7 +983,16 @@ function App() {
                                     'bg-gray-100 text-gray-800'
                                   }`}>{msg.role}</span>
                                   <div className="text-xs text-gray-500 space-x-2">
-                                    <span>{new Date(msg.timestamp).toLocaleString()}</span>
+                                    <span>{new Date(msg.timestamp).toLocaleString('en-US', {
+                                      timeZone: 'America/Chicago',
+                                      year: 'numeric',
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      second: '2-digit',
+                                      timeZoneName: 'short'
+                                    })}</span>
                                     {msg.conversation_id && (
                                       <span className="px-2 py-1 bg-white bg-opacity-70 rounded text-gray-600">
                                         ID: {msg.conversation_id.slice(0, 8)}...
