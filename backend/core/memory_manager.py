@@ -46,7 +46,8 @@ class MemoryManager:
             self.current_conversation_id = None
     
     def add_message(self, role: str, content: str, metadata: Optional[Dict] = None,
-                   model_used: Optional[str] = None, temperature: Optional[float] = None) -> str:
+                   model_used: Optional[str] = None, temperature: Optional[float] = None,
+                   processing_duration: Optional[float] = None) -> str:
         """Add a message to the current conversation"""
         if not self.current_conversation_id:
             self.start_conversation()
@@ -55,6 +56,17 @@ class MemoryManager:
             # Estimate token count (rough approximation)
             token_count = len(content.split()) * 1.3
             
+            # Calculate tokens per second if processing duration is provided
+            tokens_per_second = None
+            if processing_duration and processing_duration > 0:
+                tokens_per_second = round(token_count / processing_duration, 2)
+            
+            # Add tokens_per_second to metadata
+            extended_metadata = metadata or {}
+            if tokens_per_second:
+                extended_metadata['tokens_per_second'] = tokens_per_second
+                extended_metadata['processing_duration'] = processing_duration
+            
             message = Message(
                 conversation_id=self.current_conversation_id,
                 role=role,
@@ -62,7 +74,7 @@ class MemoryManager:
                 token_count=int(token_count),
                 model_used=model_used,
                 temperature=temperature,
-                meta_data=metadata or {}
+                meta_data=extended_metadata
             )
             db.add(message)
             db.commit()

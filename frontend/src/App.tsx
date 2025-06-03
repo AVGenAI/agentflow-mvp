@@ -891,11 +891,27 @@ function App() {
                             }`}></div>
                             {executionResult.status}
                           </span>
-                          {executionResult.metrics?.duration_seconds && (
-                            <span className="text-sm text-gray-500">
-                              Completed in {executionResult.metrics.duration_seconds.toFixed(2)}s
-                            </span>
-                          )}
+                          <div className="text-sm text-gray-500 text-right">
+                            {executionResult.metrics?.duration_seconds && (
+                              <div>Completed in {executionResult.metrics.duration_seconds.toFixed(2)}s</div>
+                            )}
+                            {executionResult.output?.conversation_history && (() => {
+                              const aiMessages = executionResult.output.conversation_history.filter((msg: any) => 
+                                msg.role === 'ai' && msg.meta_data?.tokens_per_second
+                              );
+                              if (aiMessages.length > 0) {
+                                const avgTokensPerSec = aiMessages.reduce((sum: number, msg: any) => 
+                                  sum + (msg.meta_data?.tokens_per_second || 0), 0
+                                ) / aiMessages.length;
+                                return (
+                                  <div className="text-cyan-600 font-medium">
+                                    ⚡ Avg: {avgTokensPerSec.toFixed(1)} tokens/sec
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
                         </div>
                       </div>
                   
@@ -1001,13 +1017,21 @@ function App() {
                                   </div>
                                 </div>
                                 <div className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</div>
-                                {(msg.model_used || msg.token_count) && (
+                                {(msg.model_used || msg.token_count || msg.meta_data?.tokens_per_second) && (
                                   <div className="mt-2 pt-2 border-t border-gray-200 text-xs text-gray-500 space-x-4">
                                     {msg.model_used && (
                                       <span>Model: {msg.model_used}</span>
                                     )}
                                     {msg.token_count && (
                                       <span>Tokens: {msg.token_count}</span>
+                                    )}
+                                    {msg.meta_data?.tokens_per_second && (
+                                      <span className="text-cyan-600 font-medium">
+                                        ⚡ {msg.meta_data.tokens_per_second} tokens/sec
+                                      </span>
+                                    )}
+                                    {msg.meta_data?.processing_duration && (
+                                      <span>Duration: {msg.meta_data.processing_duration.toFixed(2)}s</span>
                                     )}
                                   </div>
                                 )}

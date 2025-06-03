@@ -262,11 +262,18 @@ Always explain your reasoning before taking actions."""),
                 )
             
             if self.executor:
+                # Track AI processing time
+                ai_start_time = datetime.utcnow()
+                
                 # Run agent with LLM
                 result = await asyncio.to_thread(
                     self.executor.invoke,
                     {"input": formatted_input}
                 )
+                
+                # Calculate AI processing duration
+                ai_end_time = datetime.utcnow()
+                ai_processing_duration = (ai_end_time - ai_start_time).total_seconds()
                 
                 # Process output
                 execution.output_data = {
@@ -286,11 +293,15 @@ Always explain your reasoning before taking actions."""),
                         content=result.get("output", ""),
                         metadata={"steps": self._extract_steps(result)},
                         model_used=model_info,
-                        temperature=self.config.temperature
+                        temperature=self.config.temperature,
+                        processing_duration=ai_processing_duration
                     )
             else:
-                # Mock mode - generate mock response
+                # Mock mode - generate mock response with simulated processing time
+                mock_start_time = datetime.utcnow()
                 execution.output_data = self._generate_mock_response(formatted_input)
+                mock_end_time = datetime.utcnow()
+                mock_processing_duration = (mock_end_time - mock_start_time).total_seconds()
                 
                 # Store mock response in persistent memory
                 if self.persistent_memory:
@@ -299,7 +310,8 @@ Always explain your reasoning before taking actions."""),
                         content=execution.output_data.get("result", ""),
                         metadata={"mock_mode": True},
                         model_used="mock",
-                        temperature=0.5
+                        temperature=0.5,
+                        processing_duration=mock_processing_duration
                     )
             
             execution.status = AgentStatus.COMPLETED
