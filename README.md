@@ -1,192 +1,478 @@
-# AgentFlow MVP 🤖
+# AgentFlow MVP - Enterprise Agentic AI Platform
 
-A minimal viable product for an enterprise Agentic AI platform that enables autonomous business process automation.
+## Overview
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
-![React](https://img.shields.io/badge/react-18.2+-61DAFB.svg)
+AgentFlow MVP is an enterprise-grade Agentic AI platform that demonstrates the power of autonomous AI agents working independently and collaboratively to automate complex business processes. Built with Python/FastAPI backend and React/TypeScript frontend, it showcases how AI agents can transform traditional workflows into intelligent, self-managing systems.
 
-## Features
+## Key Features
 
-- **Agent Creation**: Define autonomous AI agents with goals and capabilities
-- **Workflow Orchestration**: Coordinate multiple agents to complete complex tasks
-- **Integration Framework**: Connect to external systems via APIs
-- **Monitoring Dashboard**: Track agent performance and decisions
-- **REST API**: Programmatic agent management
-- **Multiple LLM Support**: Use OpenAI, Ollama (local), or mock mode
+- **7 Specialized AI Agents** - Each designed for specific business functions
+- **5 Pre-built Workflows** - Multi-agent collaboration for complex processes
+- **Multiple Input Modes** - Text, JSON, or file uploads (PDF, Word, PowerPoint)
+- **Ollama Integration** - Use local LLMs without API keys
+- **Mock Mode** - Test without any LLM configuration
+- **Real-time Execution** - See agents working and collaborating
+- **Formatted Output** - Markdown rendering with tables, lists, and formatting
 
-## Tech Stack
+## Table of Contents
 
-- **Backend**: Python (FastAPI)
-- **Agent Framework**: LangChain + Custom orchestration
-- **Frontend**: React + TypeScript
-- **Database**: PostgreSQL + Redis
-- **Message Queue**: Redis/Celery
-- **AI/LLM**: Multiple providers supported:
-  - OpenAI (GPT-4, GPT-3.5)
-  - Ollama (Llama2, Mistral, Mixtral, etc.)
-  - Mock mode for testing
+1. [Installation](#installation)
+2. [Individual Agents](#individual-agents)
+3. [Multi-Agent Workflows](#multi-agent-workflows)
+4. [Use Cases by Industry](#use-cases-by-industry)
+5. [Input Examples](#input-examples)
+6. [Architecture](#architecture)
 
-## 🚀 Quick Start
+## Installation
 
-### Prerequisites
-- Python 3.11+
-- Node.js 18+
-- Git
+### Quick Start with Docker
 
-### Installation
-
-1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/agentflow-mvp.git
+# Clone the repository
+git clone https://github.com/AVGenAI/agentflow-mvp.git
 cd agentflow-mvp
+
+# Start with Docker Compose
+docker-compose up -d
+
+# Access the application
+# Frontend: http://localhost:3000
+# Backend API: http://localhost:8000
 ```
 
-2. Set up the backend:
+### Using with Ollama (Recommended)
+
 ```bash
-cd backend
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
+# Install and start Ollama
+ollama serve
+
+# Install optimized models for each agent type
+./install_models.sh
+
+# Use multi-model configuration
+cp .env.multi-model .env
+# Edit .env if needed
+
+# Start the application
+docker-compose up -d
+
+# View agent-model configuration
+cd backend && python show_agent_models.py
 ```
 
-3. Set up the frontend:
-```bash
-cd ../frontend
-npm install
+### Multi-Model Configuration
+
+AgentFlow supports using different specialized models for each agent type:
+
+- **Document Intelligence**: `qwen2.5:14b` - Best for document understanding
+- **Customer Service**: `llama3.1:8b` - Optimized for conversational tasks  
+- **Data Analysis**: `qwen2.5:14b` - Excellent for structured data
+- **Compliance**: `qwen2.5:7b` - Efficient for rule-based analysis
+- **Process Automation**: `mistral:7b` - Fast for routine tasks
+
+This allows each agent to use the most appropriate model for its specific tasks, improving both performance and efficiency.
+
+## Individual Agents
+
+### 1. Process Automation Agent
+**Purpose**: Automates repetitive business processes and workflows
+
+**Capabilities**:
+- Document processing and data extraction
+- Form filling and submission automation
+- Email and notification automation
+- File organization and management
+- Report generation
+
+**Use Cases**:
+```text
+Input: "Process all invoices from this month and create a summary report"
+Output: 
+- Extracts invoice data
+- Validates amounts and vendors
+- Creates categorized summary
+- Flags anomalies
+- Generates formatted report
 ```
 
-4. Configure environment (optional):
-```bash
-cd ../backend
-cp .env.example .env
-# Edit .env to add OpenAI API key (optional - runs in mock mode without it)
+**Real-World Applications**:
+- Invoice processing
+- Order fulfillment
+- Employee onboarding
+- Document classification
+- Data migration
+
+### 2. Compliance Monitor Agent
+**Purpose**: Ensures adherence to regulations and company policies
+
+**Capabilities**:
+- Policy violation detection
+- Regulatory compliance checking
+- Audit trail generation
+- Risk assessment
+- Compliance reporting
+
+**Use Cases**:
+```text
+Input: "Check if our data handling procedures comply with GDPR requirements"
+Output:
+- Reviews current procedures
+- Identifies compliance gaps
+- Suggests remediation steps
+- Provides compliance score
+- Generates audit report
 ```
 
-5. Start the application:
+**Real-World Applications**:
+- GDPR/CCPA compliance
+- Financial regulations (SOX, Basel III)
+- Healthcare compliance (HIPAA)
+- Industry standards (ISO, PCI-DSS)
+- Internal policy enforcement
 
-**Terminal 1 - Backend:**
-```bash
-cd backend
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-python main.py
+### 3. Customer Service Agent
+**Purpose**: Handles customer inquiries and support requests
+
+**Capabilities**:
+- Natural language understanding
+- Sentiment analysis
+- Issue categorization
+- Solution recommendation
+- Escalation management
+
+**Use Cases**:
+```text
+Input: "Customer complaining about delayed shipment and requesting refund"
+Output:
+- Analyzes sentiment (frustrated)
+- Categorizes issue (shipping delay)
+- Checks order status
+- Offers solutions (expedited shipping, partial refund)
+- Drafts empathetic response
 ```
 
-**Terminal 2 - Frontend:**
-```bash
-cd frontend
-npm start
+**Real-World Applications**:
+- Email support automation
+- Chat support
+- Complaint handling
+- FAQ responses
+- Customer feedback analysis
+
+### 4. Data Analysis Agent
+**Purpose**: Analyzes data to extract insights and patterns
+
+**Capabilities**:
+- Statistical analysis
+- Trend identification
+- Anomaly detection
+- Predictive analytics
+- Visualization recommendations
+
+**Use Cases**:
+```text
+Input: "Analyze Q4 sales data and identify top performing products"
+Output:
+- Sales trend analysis
+- Product performance ranking
+- Regional breakdown
+- Customer segment analysis
+- Growth recommendations
 ```
 
-Access the application at http://localhost:3000
+**Real-World Applications**:
+- Sales analytics
+- Financial analysis
+- Market research
+- Performance metrics
+- Competitive analysis
 
-## Project Structure
+### 5. Document Intelligence Agent
+**Purpose**: Extracts and processes information from documents
 
-```
-agentflow-mvp/
-├── backend/          # FastAPI backend services
-├── frontend/         # React web interface
-├── agents/           # Agent definitions and templates
-├── examples/         # Example use cases
-├── tests/           # Test suites
-└── docs/            # Documentation
-```
+**Capabilities**:
+- Multi-format support (PDF, Word, PowerPoint)
+- Information extraction
+- Document summarization
+- Classification
+- Translation
 
-## 📋 Available Agents
-
-1. **Process Automation Specialist** - Automates business processes
-2. **Decision Maker** - Makes data-driven decisions
-3. **Customer Service Specialist** - Handles complaints and inquiries
-4. **Data Analyst** - Analyzes data and identifies patterns
-5. **Compliance Officer** - Ensures regulatory compliance
-6. **HR Recruitment Specialist** - Screens candidates and schedules interviews
-7. **Financial Analyst** - Analyzes financial data and creates reports
-
-## 🔄 Available Workflows
-
-1. **Purchase Approval Workflow** - Multi-step approval process
-2. **Customer Complaint Resolution** - End-to-end complaint handling
-3. **Monthly Financial Reporting** - Automated financial analysis
-4. **Recruitment Pipeline** - Candidate screening and selection
-5. **Enterprise Risk Assessment** - Comprehensive risk analysis
-
-## 📝 Input Modes
-
-- **Text Mode**: Natural language input
-- **JSON Mode**: Structured data input
-- **File Upload**: Support for PDF, Word, PowerPoint, and text files
-
-## 🔧 Configuration
-
-### LLM Providers
-
-The system supports multiple LLM providers:
-
-1. **Mock Mode** (default): No API key required
-2. **OpenAI**: Add your API key in `.env`
-3. **Ollama**: Local LLM support (see `LLM_SETUP_GUIDE.md`)
-
-### Environment Variables
-
-Create a `.env` file in the backend directory:
-
-```env
-# Optional - system runs in mock mode without these
-OPENAI_API_KEY=your_openai_api_key_here
+**Use Cases**:
+```text
+Input: Multiple contract files
+Prompt: "Extract key terms and compare liability clauses"
+Output:
+- Extracts contract parties
+- Identifies key dates
+- Compares liability terms
+- Highlights differences
+- Risk assessment
 ```
 
-## 📚 Documentation
+**Real-World Applications**:
+- Contract analysis
+- Resume screening
+- Research paper summarization
+- Legal document review
+- Technical documentation processing
 
-- [Quick Start Guide](QUICKSTART.md)
-- [Agents Guide](AGENTS_GUIDE.md)
-- [Input Modes Guide](INPUT_MODES_GUIDE.md)
-- [LLM Setup Guide](LLM_SETUP_GUIDE.md)
-- [Running Instructions](RUN_INSTRUCTIONS.md)
+### 6. Decision Support Agent
+**Purpose**: Provides data-driven recommendations for decision making
 
-## 🧪 Testing
+**Capabilities**:
+- Multi-criteria analysis
+- Risk-benefit assessment
+- Scenario planning
+- Impact analysis
+- Recommendation ranking
 
-The system includes example buttons for quick testing:
-- Process Invoice
-- Approval Request
-- Customer Complaint
-- Financial Report
-- Screen Candidates
-- Risk Assessment
-
-## 🛠 Development
-
-### Backend Development
-```bash
-cd backend
-source venv/bin/activate
-python main.py
+**Use Cases**:
+```text
+Input: "Should we expand to the European market given current conditions?"
+Output:
+- Market analysis
+- Risk assessment
+- Financial projections
+- Competitive landscape
+- Recommended action plan
 ```
 
-### Frontend Development
-```bash
-cd frontend
-npm start
+**Real-World Applications**:
+- Strategic planning
+- Investment decisions
+- Vendor selection
+- Product launch decisions
+- Resource allocation
+
+### 7. Quality Assurance Agent
+**Purpose**: Ensures quality standards and identifies defects
+
+**Capabilities**:
+- Quality metrics tracking
+- Defect detection
+- Process improvement
+- Root cause analysis
+- Quality reporting
+
+**Use Cases**:
+```text
+Input: "Review customer feedback and identify quality issues"
+Output:
+- Categorizes feedback
+- Identifies recurring issues
+- Traces to root causes
+- Suggests improvements
+- Quality score trends
 ```
 
-### API Documentation
-When the backend is running, visit:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
+**Real-World Applications**:
+- Product quality control
+- Service quality monitoring
+- Code review
+- Content quality assurance
+- Process optimization
 
-## 🤝 Contributing
+## Multi-Agent Workflows
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+### 1. Customer Complaint Resolution Workflow
+**Agents**: Customer Service → Data Analysis → Decision Support → Process Automation
 
-## 📄 License
+**Process Flow**:
+1. Customer Service Agent analyzes complaint sentiment and categorizes issue
+2. Data Analysis Agent checks customer history and similar cases
+3. Decision Support Agent recommends resolution options
+4. Process Automation Agent executes resolution and sends communication
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+**Example Use Case**:
+```text
+Input: "Premium customer received damaged product, very upset, threatening to cancel subscription"
+Output:
+- Sentiment: Highly negative, churn risk
+- Customer value: $50K annual, 5-year customer
+- Recommended resolution: Full refund + 20% discount next order
+- Automated: Refund processed, apology email sent, manager notified
+```
 
-## 🙏 Acknowledgments
+### 2. Intelligent Document Approval Workflow
+**Agents**: Document Intelligence → Compliance Monitor → Decision Support → Process Automation
 
-- Built with [LangChain](https://github.com/langchain-ai/langchain)
-- UI components from [Heroicons](https://heroicons.com/)
-- Styled with [Tailwind CSS](https://tailwindcss.com/)
+**Process Flow**:
+1. Document Intelligence extracts key information
+2. Compliance Monitor checks against policies
+3. Decision Support evaluates approval criteria
+4. Process Automation routes to approvers or auto-approves
+
+**Example Use Case**:
+```text
+Input: Purchase request for $25,000 software license
+Output:
+- Extracted: Vendor, amount, department, justification
+- Compliance: Within budget, approved vendor
+- Decision: Auto-approve (under $30K threshold)
+- Action: Approved, PO generated, notifications sent
+```
+
+### 3. Financial Reporting Workflow
+**Agents**: Data Analysis → Compliance Monitor → Document Intelligence → Quality Assurance
+
+**Process Flow**:
+1. Data Analysis aggregates financial metrics
+2. Compliance Monitor ensures regulatory compliance
+3. Document Intelligence generates formatted reports
+4. Quality Assurance validates accuracy
+
+**Example Use Case**:
+```text
+Input: "Generate Q4 financial report for board meeting"
+Output:
+- Revenue: $12.5M (+15% YoY)
+- Compliance: SOX compliant, audit-ready
+- Report: 25-page formatted document
+- Quality: All figures verified, no discrepancies
+```
+
+### 4. Recruitment Screening Workflow
+**Agents**: Document Intelligence → Data Analysis → Decision Support → Process Automation
+
+**Process Flow**:
+1. Document Intelligence extracts resume information
+2. Data Analysis scores candidates against requirements
+3. Decision Support ranks and recommends
+4. Process Automation schedules interviews
+
+**Example Use Case**:
+```text
+Input: 50 resumes for Senior Developer position
+Output:
+- Parsed: Skills, experience, education from all resumes
+- Scored: Top 10 candidates identified
+- Recommended: 5 for immediate interviews
+- Automated: Interview invites sent, calendars checked
+```
+
+### 5. Risk Assessment Workflow
+**Agents**: Data Analysis → Compliance Monitor → Decision Support → Quality Assurance
+
+**Process Flow**:
+1. Data Analysis identifies risk factors
+2. Compliance Monitor checks regulatory implications
+3. Decision Support evaluates mitigation strategies
+4. Quality Assurance validates assessment
+
+**Example Use Case**:
+```text
+Input: "Assess risks for new product launch in healthcare sector"
+Output:
+- Risks: Regulatory (HIGH), Technical (MEDIUM), Market (LOW)
+- Compliance: FDA approval needed, HIPAA considerations
+- Mitigation: Phased launch, additional testing
+- Confidence: 85% accuracy based on similar assessments
+```
+
+## Use Cases by Industry
+
+### Financial Services
+- **Loan Processing**: Automate application review, risk assessment, approval
+- **Fraud Detection**: Real-time transaction monitoring and anomaly detection
+- **Regulatory Reporting**: Automated compliance reports for multiple jurisdictions
+- **Customer Onboarding**: KYC/AML checks, document verification, account setup
+
+### Healthcare
+- **Patient Record Analysis**: Extract insights from medical records
+- **Insurance Claims**: Automate claim review and approval
+- **Clinical Trial Management**: Patient matching, protocol compliance
+- **Medical Document Processing**: Summarize research papers, clinical notes
+
+### Retail & E-commerce
+- **Inventory Management**: Demand forecasting, reorder automation
+- **Customer Support**: Handle returns, complaints, product inquiries
+- **Price Optimization**: Competitive analysis, dynamic pricing
+- **Product Description**: Generate and optimize product content
+
+### Manufacturing
+- **Quality Control**: Defect detection, root cause analysis
+- **Supply Chain**: Vendor management, order optimization
+- **Maintenance**: Predictive maintenance scheduling
+- **Compliance**: Safety regulations, environmental standards
+
+### Legal
+- **Contract Review**: Extract terms, identify risks, compare versions
+- **Due Diligence**: Automated document review and analysis
+- **Compliance Monitoring**: Policy updates, regulatory changes
+- **Case Research**: Summarize precedents, extract relevant citations
+
+## Input Examples
+
+### Text Mode
+```text
+"Analyze our customer support tickets from last month and identify the top 3 issues"
+```
+
+### JSON Mode
+```json
+{
+  "task": "Process invoice",
+  "invoice_data": {
+    "vendor": "Acme Corp",
+    "amount": 5000,
+    "due_date": "2024-12-31"
+  },
+  "actions": ["validate", "approve", "schedule_payment"]
+}
+```
+
+### Multi-File Mode
+Upload multiple documents and provide instructions:
+```text
+Files: contract_v1.pdf, contract_v2.pdf, contract_final.pdf
+Prompt: "Compare these contract versions and highlight all changes in liability and payment terms"
+```
+
+## Architecture
+
+### Technology Stack
+- **Backend**: Python 3.11, FastAPI, LangChain
+- **Frontend**: React 18, TypeScript, Tailwind CSS
+- **Database**: PostgreSQL 15
+- **Cache**: Redis 7
+- **LLM Options**: OpenAI, Ollama (local), Mock mode
+
+### Key Components
+1. **Agent Framework**: Extensible base agent class with LangChain integration
+2. **Workflow Engine**: Orchestrates multi-agent collaboration
+3. **Document Processor**: Handles multiple file formats
+4. **API Layer**: RESTful API with WebSocket support for real-time updates
+5. **UI Components**: Responsive design with markdown rendering
+
+### Deployment Options
+- **Docker Compose**: Full stack deployment
+- **Kubernetes**: Scalable enterprise deployment
+- **Cloud**: AWS, Azure, GCP ready
+- **On-Premise**: Full data control with Ollama
+
+## Getting Started
+
+1. **Choose your LLM**:
+   - Ollama (recommended for local/private deployment)
+   - OpenAI (for maximum capability)
+   - Mock mode (for testing)
+
+2. **Start with Examples**:
+   - Use the quick example buttons to see agents in action
+   - Try uploading documents for analysis
+   - Create custom workflows for your use cases
+
+3. **Customize for Your Needs**:
+   - Add new agents for specific tasks
+   - Create custom workflows
+   - Integrate with your existing systems
+
+## Support
+
+For issues, feature requests, or contributions:
+- GitHub: https://github.com/AVGenAI/agentflow-mvp
+- Documentation: See `/docs` folder
+- API Reference: http://localhost:8000/docs (when running)
+
+---
+
+AgentFlow MVP demonstrates the future of business automation where AI agents work autonomously to handle complex tasks, make intelligent decisions, and continuously improve processes. Start exploring the possibilities today!

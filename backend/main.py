@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from typing import Dict, List, Any, Optional
 import os
 from dotenv import load_dotenv
+from core.memory_manager import MemoryManager
 
 from core.agent import (
     BaseAgent, 
@@ -84,6 +85,14 @@ class WorkflowResponse(BaseModel):
 @app.on_event("startup")
 async def startup_event():
     """Initialize default agents and workflows"""
+    # Initialize database tables
+    try:
+        from database.connection import init_db
+        init_db()
+        print("✅ Database initialized")
+    except Exception as e:
+        print(f"⚠️  Database initialization warning: {e}")
+        print("   Database will be initialized when PostgreSQL is available")
     # Create all specialized agents
     agents = [
         ProcessAutomationAgent(),
@@ -471,6 +480,83 @@ async def example_risk_assessment(risk_data: Dict[str, Any]):
         "status": execution.status,
         "mitigation_strategy": execution.context.get("agent_outputs", {}).get("mitigation_strategy", {})
     }
+
+# Conversation History Endpoints
+@app.get("/api/agents/{agent_id}/conversations")
+async def get_agent_conversations(agent_id: str, limit: int = 10):
+    """Get recent conversations for an agent"""
+    if agent_id not in agents_registry:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    agent = agents_registry[agent_id]
+    if not agent.persistent_memory:
+        return []
+    
+    return agent.persistent_memory.get_recent_conversations(limit=limit)
+
+@app.get("/api/conversations/{conversation_id}/messages")
+async def get_conversation_messages(conversation_id: str, limit: int = 100):
+    """Get messages for a specific conversation"""
+    # We need to find which agent owns this conversation
+    # For now, we'll create a temporary memory manager
+    memory_manager = MemoryManager("temp", "temp")
+    messages = memory_manager.get_conversation_history(conversation_id=conversation_id, limit=limit)
+    
+    if not messages:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    return messages
+
+@app.post("/api/agents/{agent_id}/search")
+async def search_agent_conversations(agent_id: str, query: str, limit: int = 20):
+    """Search through an agent's conversation history"""
+    if agent_id not in agents_registry:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    agent = agents_registry[agent_id]
+    if not agent.persistent_memory:
+        return []
+    
+    return agent.persistent_memory.search_conversations(query=query, limit=limit)
+
+@app.get("/api/agents/{agent_id}/memories")
+async def get_agent_memories(agent_id: str, memory_type: Optional[str] = None):
+    """Get stored memories for an agent"""
+    if agent_id not in agents_registry:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    agent = agents_registry[agent_id]
+    if not agent.persistent_memory:
+        return []
+    
+    return agent.persistent_memory.recall_memory(memory_type=memory_type)
+
+@app.post("/api/agents/{agent_id}/learn")
+async def store_agent_memory(
+    agent_id: str,
+    memory_type: str,
+    key: str,
+    value: Any,
+    confidence: float = 1.0,
+    expires_in_days: Optional[int] = None
+):
+    """Store a new memory for an agent"""
+    if agent_id not in agents_registry:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    agent = agents_registry[agent_id]
+    if not agent.persistent_memory:
+        raise HTTPException(status_code=400, detail="Agent does not have persistent memory enabled")
+    
+    agent.persistent_memory.store_memory(
+        memory_type=memory_type,
+        key=key,
+        value=value,
+        confidence=confidence,
+        expires_in_days=expires_in_days
+    )
+    
+    return {"status": "Memory stored successfully"}
 
 if __name__ == "__main__":
     import uvicorn

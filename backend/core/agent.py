@@ -13,6 +13,19 @@ from langchain.tools import Tool
 from langchain.memory import ConversationBufferMemory
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 
+# Import model configurations
+try:
+    from config.models import AGENT_MODEL_CONFIG, DEFAULT_MODEL_CONFIG
+except ImportError:
+    AGENT_MODEL_CONFIG = {}
+    DEFAULT_MODEL_CONFIG = {"model": "llama2:latest", "temperature": 0.5}
+
+# Import memory manager
+try:
+    from core.memory_manager import MemoryManager
+except ImportError:
+    MemoryManager = None
+
 
 class AgentStatus(str, Enum):
     IDLE = "idle"
@@ -67,23 +80,56 @@ class BaseAgent:
         self.tools = []
         self.memory = None
         self.executor = None
+        self.persistent_memory = None
+        
         self._setup_agent()
     
     def _setup_agent(self):
         """Initialize the agent with LLM and tools"""
         # Initialize LLM
         import os
-        api_key = os.getenv("OPENAI_API_KEY")
+        llm_provider = os.getenv("LLM_PROVIDER", "mock").lower()
         
-        if not api_key:
-            print(f"WARNING: OPENAI_API_KEY not set. Agent {self.config.name} will run in mock mode.")
-            self.llm = None  # Will use mock responses
+        if llm_provider == "ollama":
+            try:
+                from langchain_community.chat_models import ChatOllama
+                
+                # Get agent-specific model configuration
+                agent_config = AGENT_MODEL_CONFIG.get(self.id, DEFAULT_MODEL_CONFIG)
+                
+                # Override with environment variable if set
+                ollama_model = os.getenv("OLLAMA_MODEL", agent_config["model"])
+                ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+                
+                # Use agent-specific temperature unless overridden
+                temperature = agent_config.get("temperature", self.config.temperature)
+                
+                print(f"Initializing {self.config.name} with Ollama model: {ollama_model} (temp: {temperature})")
+                print(f"  Model optimized for: {agent_config.get('description', 'General purpose')}")
+                
+                self.llm = ChatOllama(
+                    model=ollama_model,
+                    temperature=temperature,
+                    base_url=ollama_base_url
+                )
+            except Exception as e:
+                print(f"ERROR: Failed to initialize Ollama: {e}")
+                print(f"Agent {self.config.name} will run in mock mode.")
+                self.llm = None
+        elif llm_provider == "openai":
+            api_key = os.getenv("OPENAI_API_KEY")
+            if api_key:
+                self.llm = ChatOpenAI(
+                    model=self.config.model_name if self.config.model_name else "gpt-4-turbo-preview",
+                    temperature=self.config.temperature,
+                    openai_api_key=api_key
+                )
+            else:
+                print(f"WARNING: OPENAI_API_KEY not set. Agent {self.config.name} will run in mock mode.")
+                self.llm = None
         else:
-            self.llm = ChatOpenAI(
-                model=self.config.model_name if self.config.model_name else "gpt-4-turbo-preview",
-                temperature=self.config.temperature,
-                openai_api_key=api_key
-            )
+            print(f"Agent {self.config.name} running in mock mode (LLM_PROVIDER={llm_provider})")
+            self.llm = None
         
         # Setup memory if enabled
         if self.config.memory_enabled:
@@ -97,6 +143,21 @@ class BaseAgent:
         
         # Create agent executor
         self._create_executor()
+        
+        # Initialize persistent memory after agent is fully set up
+        self._setup_persistent_memory()
+    
+    def _setup_persistent_memory(self):
+        """Initialize persistent memory manager"""
+        if MemoryManager:
+            try:
+                self.persistent_memory = MemoryManager(
+                    agent_id=self.id,
+                    agent_name=self.config.name
+                )
+                print(f"Persistent memory initialized for {self.config.name} (ID: {self.id})")
+            except Exception as e:
+                print(f"Warning: Could not initialize persistent memory: {e}")
     
     def _setup_tools(self):
         """Setup available tools for the agent"""
@@ -176,12 +237,29 @@ Always explain your reasoning before taking actions."""),
             started_at=datetime.utcnow()
         )
         
+        # Start a new conversation in persistent memory
+        if self.persistent_memory:
+            workflow_id = input_data.get('workflow_id')
+            metadata = {
+                'input_type': 'file' if 'files' in input_data else 'text',
+                'file_count': input_data.get('file_count', 0)
+            }
+            self.persistent_memory.start_conversation(workflow_id=workflow_id, metadata=metadata)
+        
         try:
             execution.status = AgentStatus.RUNNING
             self.status = AgentStatus.RUNNING
             
             # Format input
             formatted_input = self._format_input(input_data)
+            
+            # Store user message in persistent memory
+            if self.persistent_memory:
+                self.persistent_memory.add_message(
+                    role="human",
+                    content=formatted_input,
+                    metadata=input_data
+                )
             
             if self.executor:
                 # Run agent with LLM
@@ -196,17 +274,93 @@ Always explain your reasoning before taking actions."""),
                     "steps": self._extract_steps(result),
                     "final_answer": result.get("output", "")
                 }
+                
+                # Store AI response in persistent memory
+                if self.persistent_memory:
+                    model_info = None
+                    if hasattr(self, 'llm') and self.llm:
+                        model_info = getattr(self.llm, 'model', 'unknown')
+                    
+                    self.persistent_memory.add_message(
+                        role="ai",
+                        content=result.get("output", ""),
+                        metadata={"steps": self._extract_steps(result)},
+                        model_used=model_info,
+                        temperature=self.config.temperature
+                    )
             else:
                 # Mock mode - generate mock response
                 execution.output_data = self._generate_mock_response(formatted_input)
+                
+                # Store mock response in persistent memory
+                if self.persistent_memory:
+                    self.persistent_memory.add_message(
+                        role="ai",
+                        content=execution.output_data.get("result", ""),
+                        metadata={"mock_mode": True},
+                        model_used="mock",
+                        temperature=0.5
+                    )
             
             execution.status = AgentStatus.COMPLETED
             self.status = AgentStatus.IDLE
+            
+            # Add conversation history to the execution output BEFORE ending conversation
+            if self.persistent_memory:
+                # Get current conversation
+                current_conversation = self.persistent_memory.get_conversation_history()
+                
+                # Get recent conversations for this agent (last 10 conversations)
+                recent_conversations = self.persistent_memory.get_recent_conversations(limit=10)
+                
+                # Build complete history with conversation boundaries
+                complete_history = []
+                
+                # Add previous conversations
+                for conv in reversed(recent_conversations[1:]):  # Skip current conversation (first one)
+                    conv_messages = self.persistent_memory.get_conversation_history(
+                        conversation_id=conv['id'], limit=100
+                    )
+                    if conv_messages:
+                        # Add conversation separator
+                        complete_history.append({
+                            "role": "system",
+                            "content": f"--- Previous Conversation (Started: {conv['started_at']}) ---",
+                            "timestamp": conv['started_at'],
+                            "conversation_id": conv['id'],
+                            "is_separator": True
+                        })
+                        complete_history.extend(conv_messages)
+                
+                # Add current conversation separator
+                if current_conversation:
+                    complete_history.append({
+                        "role": "system", 
+                        "content": "--- Current Conversation ---",
+                        "timestamp": current_conversation[0]['timestamp'] if current_conversation else None,
+                        "conversation_id": self.persistent_memory.current_conversation_id,
+                        "is_separator": True
+                    })
+                    complete_history.extend(current_conversation)
+                
+                execution.output_data["conversation_history"] = complete_history
+                
+                # End conversation in persistent memory
+                self.persistent_memory.end_conversation(status='completed')
             
         except Exception as e:
             execution.status = AgentStatus.FAILED
             execution.errors.append(str(e))
             self.status = AgentStatus.IDLE
+            
+            # Store error in persistent memory
+            if self.persistent_memory:
+                self.persistent_memory.add_message(
+                    role="system",
+                    content=f"Error: {str(e)}",
+                    metadata={"error": True, "error_type": type(e).__name__}
+                )
+                self.persistent_memory.end_conversation(status='failed')
         
         finally:
             execution.completed_at = datetime.utcnow()
@@ -220,9 +374,40 @@ Always explain your reasoning before taking actions."""),
         """Format input data for the agent"""
         if "task" in input_data:
             task = input_data["task"]
-            # If file content is provided, append it to the task
-            if "file_content" in input_data:
+            
+            # Handle new multi-file format
+            if "files" in input_data and isinstance(input_data["files"], list):
+                file_count = input_data.get("file_count", len(input_data["files"]))
+                task += f"\n\n[Processing {file_count} files]"
+                
+                for i, file_info in enumerate(input_data["files"]):
+                    task += f"\n\nFile {i+1}: {file_info.get('name', 'Unknown')}"
+                    task += f"\nType: {file_info.get('type', 'Unknown')}"
+                    if 'content' in file_info:
+                        content = file_info['content']
+                        # Check if content is JSON-encoded binary data
+                        try:
+                            import json
+                            content_data = json.loads(content)
+                            if isinstance(content_data, dict) and content_data.get('type') == 'binary':
+                                task += f"\nFormat: {content_data.get('format', 'Unknown')}"
+                                task += f"\nSize: {content_data.get('size', 0)} bytes"
+                                # In a real implementation, we would decode base64 and extract text
+                                # For now, indicate that we received the binary file
+                                task += f"\n[Binary file received - would extract text content in production]"
+                            else:
+                                # Regular text content
+                                content_preview = content[:500] if len(content) > 500 else content
+                                task += f"\nContent: {content_preview}..."
+                        except:
+                            # Not JSON, treat as regular text
+                            content_preview = content[:500] if len(content) > 500 else content
+                            task += f"\nContent: {content_preview}..."
+            
+            # Handle legacy single file format
+            elif "file_content" in input_data:
                 task += f"\n\nFile Content: {input_data['file_content'][:500]}..."  # Limit content for mock mode
+            
             return task
         elif "question" in input_data:
             return input_data["question"]
@@ -270,37 +455,285 @@ Always explain your reasoning before taking actions."""),
         agent_name = self.config.name
         
         # Check if this is a file processing request
-        if "[File:" in input_text or "file:" in input_text.lower():
+        if "[Processing" in input_text and "files]" in input_text:
+            # Extract file count from the formatted input
+            import re
+            match = re.search(r'\[Processing (\d+) files\]', input_text)
+            file_count = int(match.group(1)) if match else 1
+            
+            response = f"""# Multi-File Processing Report
+
+## Agent: {agent_name}
+
+### 📁 File Processing Summary
+- **Status**: ✅ Successfully processed all {file_count} files
+- **Files Analyzed**: {file_count}
+- **Processing Time**: 2.3 seconds
+
+### File Analysis Results
+
+"""
+            # Extract file information from the input text
+            file_sections = input_text.split("\n\nFile ")
+            for i, section in enumerate(file_sections[1:], 1):  # Skip the first split which is before "File 1"
+                lines = section.split("\n")
+                if lines:
+                    file_name = lines[0].split(": ", 1)[1] if ": " in lines[0] else f"File {i}"
+                    file_type = "Unknown"
+                    for line in lines:
+                        if line.startswith("Type: "):
+                            file_type = line.split("Type: ", 1)[1]
+                            break
+                    
+                    response += f"""#### File {i}: {file_name}
+- **Type**: {file_type}
+- **Status**: ✅ Processed successfully
+- **Key Findings**: Content analyzed and key information extracted
+
+"""
+
+            response += f"""### Consolidated Analysis
+1. **Common Themes**: Identified patterns across all documents
+2. **Key Differences**: Notable variations documented
+3. **Recommendations**: Based on comprehensive multi-file analysis
+
+### Next Steps
+- All files have been processed and analyzed
+- Results are ready for review
+- Consider implementing suggested actions
+"""
+        elif "[File:" in input_text or "file:" in input_text.lower():
             if ".pdf" in input_text.lower():
-                response = f"[{agent_name}] PDF document processed successfully. Extracted key information from all pages. Document appears to be well-structured with clear sections."
+                response = f"""# Document Processing Report
+
+## Agent: {agent_name}
+
+### 📄 PDF Analysis Summary
+- **Status**: ✅ Successfully processed
+- **Pages**: Analyzed all pages
+- **Structure**: Well-organized with clear sections
+- **Content**: Key information extracted
+
+### Key Findings
+1. Document appears to be professionally formatted
+2. All text content has been extracted
+3. Tables and charts identified
+4. Ready for further analysis
+
+### Recommendations
+- Content is suitable for automated processing
+- Consider implementing OCR validation for critical data
+"""
             elif ".doc" in input_text.lower() or ".docx" in input_text.lower():
-                response = f"[{agent_name}] Word document analyzed. Found multiple sections with important content. Document formatting preserved and content extracted."
+                response = f"""# Document Processing Report
+
+## Agent: {agent_name}
+
+### 📝 Word Document Analysis
+- **Status**: ✅ Successfully analyzed
+- **Format**: Microsoft Word (.docx)
+- **Content**: Multiple sections with rich formatting
+
+### Processing Results
+1. **Text Extraction**: Complete
+2. **Formatting**: Preserved
+3. **Structure**: Identified headers and paragraphs
+4. **Tables**: Detected and processed
+
+### Next Steps
+- Document is ready for content analysis
+- Formatting elements maintained for context
+"""
             elif ".ppt" in input_text.lower() or ".pptx" in input_text.lower():
-                response = f"[{agent_name}] PowerPoint presentation processed. Analyzed slides and extracted key points from each slide. Presentation structure identified."
+                response = f"""# Presentation Analysis Report
+
+## Agent: {agent_name}
+
+### 🎯 PowerPoint Processing Results
+- **Status**: ✅ Successfully processed
+- **Slides**: All slides analyzed
+- **Content**: Key points extracted from each slide
+
+### Slide Analysis
+1. **Title Slides**: Identified
+2. **Content Slides**: Text and bullet points extracted
+3. **Charts/Graphs**: Detected (content descriptions available)
+4. **Speaker Notes**: Included if present
+
+### Summary
+- Presentation structure mapped
+- Key messages identified
+- Ready for content summarization
+"""
             else:
-                response = f"[{agent_name}] File processed successfully. Content extracted and analyzed. Ready for further processing."
+                response = f"""# File Processing Complete
+
+## Agent: {agent_name}
+
+### ✅ Processing Status
+- **File**: Successfully processed
+- **Content**: Extracted and analyzed
+- **Format**: Compatible with system
+
+### Ready for next steps in the workflow.
+"""
         # Generate context-aware mock responses
         elif "invoice" in input_text.lower():
-            response = f"[{agent_name}] Processed invoice successfully. Amount verified, vendor validated, and payment scheduled."
+            response = f"""# Invoice Processing Report
+
+## Agent: {agent_name}
+
+### ✅ Processing Complete
+- **Status**: Successfully processed
+- **Verification**: Amount and vendor validated
+- **Action**: Payment scheduled
+
+### Details
+| Field | Status |
+|-------|--------|
+| Amount | ✅ Verified |
+| Vendor | ✅ Validated |
+| Payment | 🕒 Scheduled |
+
+**Next Steps**: Payment will be processed according to standard terms.
+"""
         elif "complaint" in input_text.lower():
-            response = f"[{agent_name}] Analyzed customer complaint. Sentiment: negative. Priority: high. Recommended action: personal follow-up with compensation offer."
+            response = f"""# Customer Complaint Analysis
+
+## Agent: {agent_name}
+
+### 📊 Analysis Results
+- **Sentiment**: ⚠️ Negative
+- **Priority**: 🔴 High
+- **Category**: Service Issue
+
+### Recommended Actions
+1. **Immediate**: Personal follow-up call
+2. **Compensation**: Offer appropriate remedy
+3. **Follow-up**: Schedule satisfaction check
+
+### Risk Assessment
+- **Escalation Risk**: Medium-High
+- **Customer Retention**: At risk
+- **Reputation Impact**: Contained with proper response
+"""
         elif "financial" in input_text.lower():
-            response = f"[{agent_name}] Financial analysis complete. Revenue up 15% YoY, expenses controlled, cash flow positive. Recommend continued investment in growth areas."
+            response = f"""# Financial Analysis Report
+
+## Agent: {agent_name}
+
+### 📈 Key Performance Indicators
+- **Revenue Growth**: +15% YoY
+- **Cost Control**: ✅ On target
+- **Cash Flow**: 💰 Positive
+
+### Financial Health
+| Metric | Status | Change |
+|--------|--------|--------|
+| Revenue | Strong | +15% |
+| Expenses | Controlled | Stable |
+| Cash Flow | Positive | Improving |
+
+### Strategic Recommendations
+1. **Investment Areas**: Continue growth investments
+2. **Risk Management**: Maintain current controls
+3. **Opportunities**: Explore expansion in profitable segments
+"""
         elif "candidate" in input_text.lower() or "resume" in input_text.lower():
-            response = f"[{agent_name}] Screened candidates. Top 3 candidates identified based on skills match and experience. Interview schedule proposed for next week."
+            response = f"""# Candidate Screening Report
+
+## Agent: {agent_name}
+
+### 🎯 Screening Results
+- **Total Candidates**: Reviewed
+- **Top Candidates**: 3 identified
+- **Match Score**: High compatibility
+
+### Candidate Rankings
+1. **Candidate A**: 95% match - Strong technical skills
+2. **Candidate B**: 88% match - Excellent experience
+3. **Candidate C**: 85% match - Good cultural fit
+
+### Next Steps
+- **Interviews**: Scheduled for next week
+- **Reference Checks**: To be conducted
+- **Final Selection**: Expected within 5 business days
+"""
         elif "risk" in input_text.lower():
-            response = f"[{agent_name}] Risk assessment complete. Identified 3 high-priority risks, 5 medium risks. Mitigation strategies developed for all critical areas."
+            response = f"""# Risk Assessment Report
+
+## Agent: {agent_name}
+
+### 🎯 Risk Analysis Overview
+- **High Priority Risks**: 3 identified
+- **Medium Risks**: 5 identified
+- **Overall Risk Level**: Manageable
+
+### Risk Categories
+| Priority | Category | Count | Status |
+|----------|----------|-------|--------|
+| 🔴 High | Critical | 3 | Mitigation planned |
+| 🟡 Medium | Moderate | 5 | Monitoring required |
+| 🟢 Low | Minor | 2 | Acceptable |
+
+### Mitigation Strategies
+1. **Immediate Actions**: Address critical risks
+2. **Monitoring**: Implement tracking systems
+3. **Contingency Plans**: Develop response procedures
+
+### Timeline
+- **Action Plan**: Ready for implementation
+- **Review Cycle**: Monthly assessments recommended
+"""
         elif "approval" in input_text.lower():
-            response = f"[{agent_name}] Request analyzed. Based on amount and department budget, recommendation: APPROVED with conditions."
+            response = f"""# Approval Decision Report
+
+## Agent: {agent_name}
+
+### ✅ Decision Summary
+- **Status**: **APPROVED** with conditions
+- **Amount**: Within budget parameters
+- **Department**: Authorized for request
+
+### Approval Details
+| Criteria | Assessment | Status |
+|----------|------------|--------|
+| Budget Impact | ✅ Acceptable | Approved |
+| Business Case | ✅ Justified | Approved |
+| Authority Level | ✅ Sufficient | Approved |
+
+### Conditions
+1. Monthly progress reporting required
+2. Budget tracking must be maintained
+3. Final review in 90 days
+
+**Effective Date**: Immediate
+"""
         else:
-            response = f"[{agent_name}] Task completed successfully. Analysis performed and recommendations provided based on the input data."
+            response = f"""# Task Completion Report
+
+## Agent: {agent_name}
+
+### ✅ Task Status: Complete
+
+**Analysis**: Successfully performed comprehensive analysis
+**Recommendations**: Data-driven insights provided
+**Quality**: High confidence in results
+
+### Summary
+- All required processing completed
+- Recommendations formulated based on best practices
+- Ready for implementation or further review
+
+*This is a mock response - actual implementation would provide specific analysis based on your input.*
+"""
         
         return {
             "result": response,
             "steps": [
-                {"step": 1, "action": "Analyzed input", "observation": "Input data processed"},
-                {"step": 2, "action": "Applied business logic", "observation": "Rules and criteria evaluated"},
-                {"step": 3, "action": "Generated response", "observation": "Recommendations formulated"}
+                {"step": 1, "action": "Analyzed input", "observation": "Input data processed and validated"},
+                {"step": 2, "action": "Applied business logic", "observation": "Rules, criteria, and context evaluated"},
+                {"step": 3, "action": "Generated response", "observation": "Structured recommendations formulated"}
             ],
             "final_answer": response,
             "mock_mode": True
@@ -323,6 +756,10 @@ class ProcessAutomationAgent(BaseAgent):
             tools=["analyze_data", "api_call", "search"]
         )
         super().__init__(config)
+        # Use consistent ID for persistent memory
+        self.id = "process_automation_agent"
+        # Re-initialize persistent memory with the new ID
+        self._setup_persistent_memory()
 
 
 class DecisionMakingAgent(BaseAgent):
@@ -341,3 +778,7 @@ class DecisionMakingAgent(BaseAgent):
             tools=["calculate", "analyze_data", "search"]
         )
         super().__init__(config)
+        # Use consistent ID for persistent memory
+        self.id = "decision_making_agent"
+        # Re-initialize persistent memory with the new ID
+        self._setup_persistent_memory()

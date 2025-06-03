@@ -25,6 +25,10 @@ class CustomerServiceAgent(BaseAgent):
             temperature=0.7
         )
         super().__init__(config)
+        # Use consistent ID for persistent memory
+        self.id = "customer_service_agent"
+        # Re-initialize persistent memory with the new ID
+        self._setup_persistent_memory()
     
     def _analyze_sentiment(self, text: str) -> str:
         """Analyze customer sentiment"""
@@ -61,6 +65,10 @@ class DataAnalystAgent(BaseAgent):
             temperature=0.3  # Lower temperature for more consistent analysis
         )
         super().__init__(config)
+        # Use consistent ID for persistent memory
+        self.id = "data_analyst_agent"
+        # Re-initialize persistent memory with the new ID
+        self._setup_persistent_memory()
     
     def _calculate_statistics(self, data: List[float]) -> Dict[str, float]:
         """Calculate basic statistics"""
@@ -96,6 +104,10 @@ class ComplianceOfficerAgent(BaseAgent):
             temperature=0.2  # Very low temperature for consistent compliance checks
         )
         super().__init__(config)
+        # Use consistent ID for persistent memory
+        self.id = "compliance_officer_agent"
+        # Re-initialize persistent memory with the new ID
+        self._setup_persistent_memory()
     
     def _check_compliance_rules(self, process_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Check against compliance rules"""
@@ -136,6 +148,10 @@ class HRRecruitmentAgent(BaseAgent):
             temperature=0.5
         )
         super().__init__(config)
+        # Use consistent ID for persistent memory
+        self.id = "hr_recruitment_agent"
+        # Re-initialize persistent memory with the new ID
+        self._setup_persistent_memory()
     
     def _score_resume(self, resume_text: str, requirements: List[str]) -> float:
         """Score resume based on requirements"""
@@ -166,6 +182,10 @@ class FinancialAnalystAgent(BaseAgent):
             temperature=0.3
         )
         super().__init__(config)
+        # Use consistent ID for persistent memory
+        self.id = "financial_analyst_agent"
+        # Re-initialize persistent memory with the new ID
+        self._setup_persistent_memory()
     
     def _calculate_financial_metrics(self, financial_data: Dict[str, float]) -> Dict[str, float]:
         """Calculate key financial metrics"""

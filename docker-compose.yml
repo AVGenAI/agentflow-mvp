@@ -8,13 +8,18 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:password@db:5432/agentflow
       - REDIS_URL=redis://redis:6379
+      - LLM_PROVIDER=${LLM_PROVIDER:-mock}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama2:latest}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     depends_on:
       - db
       - redis
     volumes:
       - ./backend:/app
     command: python main.py
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   frontend:
     build: ./frontend
