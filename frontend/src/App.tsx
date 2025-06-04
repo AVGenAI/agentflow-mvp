@@ -18,7 +18,18 @@ import {
   ExclamationTriangleIcon,
   XCircleIcon,
   InformationCircleIcon,
-  XMarkIcon
+  XMarkIcon,
+  MagnifyingGlassIcon,
+  FunnelIcon,
+  AdjustmentsHorizontalIcon,
+  PhotoIcon,
+  FilmIcon,
+  MusicalNoteIcon,
+  ArchiveBoxIcon,
+  CodeBracketIcon,
+  TrashIcon,
+  EyeIcon,
+  ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
 
 const API_URL = 'http://localhost:8000/api';
@@ -342,6 +353,8 @@ const KeyboardHelpModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
   if (!isOpen) return null;
 
   const shortcuts = [
+    { keys: 'Cmd/Ctrl + K', description: 'Focus search' },
+    { keys: 'Cmd/Ctrl + F', description: 'Toggle filters' },
     { keys: 'Cmd/Ctrl + B', description: 'Toggle sidebar' },
     { keys: 'Cmd/Ctrl + D', description: 'Toggle dark mode' },
     { keys: 'Cmd/Ctrl + Enter', description: 'Execute agent/workflow' },
@@ -432,6 +445,21 @@ function App() {
   // Live status indicators state
   const [apiStatus, setApiStatus] = useState<'online' | 'offline' | 'checking'>('checking');
   const [processingStatus, setProcessingStatus] = useState<'idle' | 'processing' | 'completed' | 'error'>('idle');
+  
+  // Search and filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({
+    status: 'all', // 'all', 'idle', 'busy', 'offline'
+    type: 'all', // 'all', 'agents', 'workflows'
+    sortBy: 'name' // 'name', 'status', 'recent'
+  });
+  const [searchResults, setSearchResults] = useState<{agents: Agent[], workflows: Workflow[]}>({agents: [], workflows: []});
+  
+  // Enhanced file management state
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<number[]>([]);
+  const [fileUploadProgress, setFileUploadProgress] = useState<{[key: string]: number}>({});
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -476,6 +504,146 @@ function App() {
 
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
+  };
+
+  // Search and filter functions
+  const performSearch = useCallback((query: string, currentFilters = filters) => {
+    if (!query.trim() && currentFilters.status === 'all' && currentFilters.type === 'all') {
+      setSearchResults({agents: [], workflows: []});
+      return;
+    }
+
+    let filteredAgents = agents;
+    let filteredWorkflows = workflows;
+
+    // Apply text search
+    if (query.trim()) {
+      const searchTerm = query.toLowerCase();
+      filteredAgents = agents.filter(agent => 
+        agent.name.toLowerCase().includes(searchTerm) ||
+        agent.description.toLowerCase().includes(searchTerm)
+      );
+      filteredWorkflows = workflows.filter(workflow => 
+        workflow.name.toLowerCase().includes(searchTerm) ||
+        workflow.description.toLowerCase().includes(searchTerm)
+      );
+    }
+
+    // Apply status filter
+    if (currentFilters.status !== 'all') {
+      filteredAgents = filteredAgents.filter(agent => agent.status === currentFilters.status);
+    }
+
+    // Apply type filter
+    if (currentFilters.type === 'agents') {
+      filteredWorkflows = [];
+    } else if (currentFilters.type === 'workflows') {
+      filteredAgents = [];
+    }
+
+    // Apply sorting
+    const sortFunction = (a: Agent | Workflow, b: Agent | Workflow) => {
+      switch (currentFilters.sortBy) {
+        case 'name':
+          return a.name.localeCompare(b.name);
+        case 'status':
+          return 'status' in a && 'status' in b ? a.status.localeCompare(b.status) : 0;
+        default:
+          return 0;
+      }
+    };
+
+    filteredAgents.sort(sortFunction);
+    filteredWorkflows.sort(sortFunction);
+
+    setSearchResults({agents: filteredAgents, workflows: filteredWorkflows});
+  }, [agents, workflows, filters]);
+
+  // Update search results when query changes
+  useEffect(() => {
+    const debounceTimer = setTimeout(() => {
+      performSearch(searchQuery);
+    }, 300);
+
+    return () => clearTimeout(debounceTimer);
+  }, [searchQuery, performSearch]);
+
+  // Update search results when filters change
+  useEffect(() => {
+    performSearch(searchQuery, filters);
+  }, [filters, performSearch, searchQuery]);
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    setFilters({status: 'all', type: 'all', sortBy: 'name'});
+    setSearchResults({agents: [], workflows: []});
+  };
+
+  const hasActiveSearch = searchQuery.trim() || filters.status !== 'all' || filters.type !== 'all';
+
+  // File management utility functions
+  const getFileIcon = (fileName: string, fileType: string) => {
+    const extension = fileName.split('.').pop()?.toLowerCase();
+    
+    // Document types
+    if (['pdf'].includes(extension || '')) {
+      return <DocumentIcon className="h-5 w-5 text-red-500" />;
+    }
+    if (['doc', 'docx'].includes(extension || '')) {
+      return <DocumentTextIcon className="h-5 w-5 text-blue-500" />;
+    }
+    if (['ppt', 'pptx'].includes(extension || '')) {
+      return <DocumentIcon className="h-5 w-5 text-orange-500" />;
+    }
+    if (['txt'].includes(extension || '')) {
+      return <DocumentTextIcon className="h-5 w-5 text-gray-500" />;
+    }
+    
+    // Media types
+    if (fileType.startsWith('image/')) {
+      return <PhotoIcon className="h-5 w-5 text-green-500" />;
+    }
+    if (fileType.startsWith('video/')) {
+      return <FilmIcon className="h-5 w-5 text-purple-500" />;
+    }
+    if (fileType.startsWith('audio/')) {
+      return <MusicalNoteIcon className="h-5 w-5 text-pink-500" />;
+    }
+    
+    // Code types
+    if (['js', 'ts', 'jsx', 'tsx', 'py', 'java', 'cpp', 'c', 'html', 'css'].includes(extension || '')) {
+      return <CodeBracketIcon className="h-5 w-5 text-indigo-500" />;
+    }
+    
+    // Archive types
+    if (['zip', 'rar', '7z', 'tar', 'gz'].includes(extension || '')) {
+      return <ArchiveBoxIcon className="h-5 w-5 text-yellow-500" />;
+    }
+    
+    // Default
+    return <DocumentIcon className="h-5 w-5 text-gray-400" />;
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const getFileTypeColor = (fileName: string): string => {
+    const extension = fileName.split('.').pop()?.toLowerCase();
+    const colorMap: {[key: string]: string} = {
+      'pdf': 'bg-red-100 text-red-700 border-red-200',
+      'doc': 'bg-blue-100 text-blue-700 border-blue-200',
+      'docx': 'bg-blue-100 text-blue-700 border-blue-200',
+      'ppt': 'bg-orange-100 text-orange-700 border-orange-200',
+      'pptx': 'bg-orange-100 text-orange-700 border-orange-200',
+      'txt': 'bg-gray-100 text-gray-700 border-gray-200',
+      'default': 'bg-gray-100 text-gray-700 border-gray-200'
+    };
+    return colorMap[extension || 'default'] || colorMap['default'];
   };
 
   // Keyboard shortcuts
@@ -529,6 +697,23 @@ function App() {
         const newTab = tabMap[e.key as '1' | '2' | '3'];
         setActiveTab(newTab);
         showToast('info', 'Tab Switched', `Switched to ${newTab.charAt(0).toUpperCase() + newTab.slice(1)} tab`);
+      }
+
+      // Cmd/Ctrl + K: Focus search
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        const searchInput = document.getElementById('global-search') as HTMLInputElement;
+        if (searchInput) {
+          searchInput.focus();
+          showToast('info', 'Search Focused', 'Start typing to search agents and workflows');
+        }
+      }
+
+      // Cmd/Ctrl + F: Toggle filters
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault();
+        setShowFilters(!showFilters);
+        showToast('info', 'Filters Toggled', showFilters ? 'Filters hidden' : 'Filters shown');
       }
     };
 
@@ -604,8 +789,13 @@ function App() {
   const checkApiStatus = async () => {
     try {
       setApiStatus('checking');
-      const response = await axios.get(`${API_URL}/health`, { timeout: 5000 });
-      setApiStatus('online');
+      // Use the agents endpoint for health check since /health doesn't exist
+      const response = await axios.get(`${API_URL}/agents`, { timeout: 5000 });
+      if (response.data && Array.isArray(response.data)) {
+        setApiStatus('online');
+      } else {
+        setApiStatus('offline');
+      }
     } catch (error) {
       console.error('API health check failed:', error);
       setApiStatus('offline');
@@ -758,34 +948,113 @@ function App() {
     return { task: text };
   };
 
+  // Enhanced file handling functions
+  const validateFiles = (files: FileList | File[]): {valid: File[], invalid: File[]} => {
+    const allowedTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/vnd.ms-powerpoint',
+      'text/plain'
+    ];
+    
+    const maxSize = 10 * 1024 * 1024; // 10MB limit
+    const fileArray = Array.from(files);
+    
+    const valid = fileArray.filter(file => 
+      allowedTypes.includes(file.type) && file.size <= maxSize
+    );
+    const invalid = fileArray.filter(file => 
+      !allowedTypes.includes(file.type) || file.size > maxSize
+    );
+    
+    return { valid, invalid };
+  };
+
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files) {
-      const allowedTypes = [
-        'application/pdf',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        'application/vnd.ms-powerpoint',
-        'text/plain'
-      ];
-      
-      const validFiles = Array.from(files).filter(file => allowedTypes.includes(file.type));
-      const invalidFiles = Array.from(files).filter(file => !allowedTypes.includes(file.type));
-      
-      if (invalidFiles.length > 0) {
-        showToast('warning', 'File Type Restriction', 'Some files were not added. Please upload only PDF, Word, PowerPoint, or text files.');
-      }
-      
-      if (validFiles.length > 0) {
-        setUploadedFiles(prev => [...prev, ...validFiles]);
-        showToast('success', 'Files Uploaded', `${validFiles.length} file(s) uploaded successfully.`);
-      }
+      processFiles(files);
+    }
+  };
+
+  const processFiles = (files: FileList | File[]) => {
+    const { valid, invalid } = validateFiles(files);
+    
+    if (invalid.length > 0) {
+      const reasons = invalid.map(file => {
+        if (file.size > 10 * 1024 * 1024) {
+          return `${file.name}: Too large (max 10MB)`;
+        }
+        return `${file.name}: Unsupported type`;
+      });
+      showToast('warning', 'File Upload Issues', `${invalid.length} files rejected:\n${reasons.join('\n')}`);
+    }
+    
+    if (valid.length > 0) {
+      setUploadedFiles(prev => [...prev, ...valid]);
+      setSelectedFiles([]); // Clear selection when adding new files
+      showToast('success', 'Files Added', `${valid.length} file(s) uploaded successfully.`);
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      processFiles(files);
     }
   };
   
+  // Bulk file operations
   const removeFile = (index: number) => {
     setUploadedFiles(prev => prev.filter((_, i) => i !== index));
+    setSelectedFiles(prev => prev.filter(i => i !== index).map(i => i > index ? i - 1 : i));
+  };
+
+  const removeSelectedFiles = () => {
+    setUploadedFiles(prev => prev.filter((_, i) => !selectedFiles.includes(i)));
+    setSelectedFiles([]);
+    showToast('success', 'Files Removed', `${selectedFiles.length} file(s) removed.`);
+  };
+
+  const toggleFileSelection = (index: number) => {
+    setSelectedFiles(prev => 
+      prev.includes(index) 
+        ? prev.filter(i => i !== index)
+        : [...prev, index]
+    );
+  };
+
+  const selectAllFiles = () => {
+    if (selectedFiles.length === uploadedFiles.length) {
+      setSelectedFiles([]);
+    } else {
+      setSelectedFiles(uploadedFiles.map((_, i) => i));
+    }
+  };
+
+  const clearAllFiles = () => {
+    setUploadedFiles([]);
+    setSelectedFiles([]);
+    showToast('info', 'Files Cleared', 'All files removed.');
   };
 
   const readFileContent = async (file: File): Promise<string> => {
@@ -1058,7 +1327,7 @@ function App() {
       <header className="bg-black dark:bg-gray-800 border-b border-gray-800 dark:border-gray-700 flex-shrink-0 transition-colors duration-200">
         <div className="w-full px-6">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center">
+            <div className="flex items-center flex-1">
               <button
                 onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
                 className="mr-4 p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
@@ -1069,6 +1338,43 @@ function App() {
               <BoltIcon className="h-8 w-8 text-cyan-400 mr-3" />
               <h1 className="text-2xl font-bold text-white">AgentFlow</h1>
               <span className="ml-2 text-sm text-gray-400 font-normal">Enterprise AI Platform</span>
+              
+              {/* Global Search Bar */}
+              {!isMobile && (
+                <div className="flex-1 max-w-md mx-8">
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <MagnifyingGlassIcon className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <input
+                      id="global-search"
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search agents and workflows... (Cmd+K)"
+                      className="block w-full pl-10 pr-12 py-2 border border-gray-600 rounded-lg bg-gray-800 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-sm"
+                    />
+                    {(searchQuery || hasActiveSearch) && (
+                      <div className="absolute inset-y-0 right-0 flex items-center">
+                        <button
+                          onClick={() => setShowFilters(!showFilters)}
+                          className={`p-1 mx-1 rounded ${showFilters ? 'text-cyan-400' : 'text-gray-400 hover:text-white'} transition-colors`}
+                          title="Toggle filters (Cmd+F)"
+                        >
+                          <FunnelIcon className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={clearSearch}
+                          className="p-1 mr-2 text-gray-400 hover:text-white transition-colors"
+                          title="Clear search"
+                        >
+                          <XMarkIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex items-center space-x-4">
               {/* Status Indicators */}
@@ -1106,6 +1412,80 @@ function App() {
           </div>
         </div>
       </header>
+
+      {/* Filter Panel */}
+      {showFilters && (
+        <div className="bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 transition-colors duration-200">
+          <div className="px-6 py-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center space-x-2">
+                <AdjustmentsHorizontalIcon className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Filters:</span>
+              </div>
+              
+              {/* Type Filter */}
+              <div className="flex items-center space-x-2">
+                <label className="text-xs text-gray-500 dark:text-gray-400">Type:</label>
+                <select
+                  value={filters.type}
+                  onChange={(e) => setFilters({...filters, type: e.target.value})}
+                  className="text-xs bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-cyan-500"
+                >
+                  <option value="all">All</option>
+                  <option value="agents">Agents</option>
+                  <option value="workflows">Workflows</option>
+                </select>
+              </div>
+
+              {/* Status Filter */}
+              <div className="flex items-center space-x-2">
+                <label className="text-xs text-gray-500 dark:text-gray-400">Status:</label>
+                <select
+                  value={filters.status}
+                  onChange={(e) => setFilters({...filters, status: e.target.value})}
+                  className="text-xs bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-cyan-500"
+                >
+                  <option value="all">All Status</option>
+                  <option value="idle">Idle</option>
+                  <option value="busy">Busy</option>
+                  <option value="offline">Offline</option>
+                </select>
+              </div>
+
+              {/* Sort Filter */}
+              <div className="flex items-center space-x-2">
+                <label className="text-xs text-gray-500 dark:text-gray-400">Sort:</label>
+                <select
+                  value={filters.sortBy}
+                  onChange={(e) => setFilters({...filters, sortBy: e.target.value})}
+                  className="text-xs bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-cyan-500"
+                >
+                  <option value="name">Name</option>
+                  <option value="status">Status</option>
+                  <option value="recent">Recent</option>
+                </select>
+              </div>
+
+              {/* Clear Filters */}
+              {hasActiveSearch && (
+                <button
+                  onClick={clearSearch}
+                  className="text-xs px-3 py-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors"
+                >
+                  Clear All
+                </button>
+              )}
+
+              {/* Results Count */}
+              {hasActiveSearch && (
+                <div className="text-xs text-gray-500 dark:text-gray-400 ml-auto">
+                  {searchResults.agents.length + searchResults.workflows.length} results
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Layout - Resizable Split */}
       <div className={`${isMobile ? 'flex flex-col' : 'flex'} flex-1 overflow-hidden`}>
@@ -1252,8 +1632,53 @@ function App() {
             {activeTab === 'agents' && (
               <div>
                 <div className="mb-6">
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">AI Agents</h2>
-                  <p className="text-gray-600 dark:text-gray-300">Specialized AI agents for enterprise automation</p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                        AI Agents
+                        {hasActiveSearch && (
+                          <span className="ml-3 text-lg text-cyan-600 dark:text-cyan-400">
+                            ({searchResults.agents.length} results)
+                          </span>
+                        )}
+                      </h2>
+                      <p className="text-gray-600 dark:text-gray-300">
+                        {hasActiveSearch 
+                          ? `Search results for "${searchQuery}" in agents`
+                          : 'Specialized AI agents for enterprise automation'
+                        }
+                      </p>
+                    </div>
+                    {/* Mobile Search Button */}
+                    {isMobile && (
+                      <button
+                        onClick={() => {
+                          const searchInput = document.getElementById('mobile-search') as HTMLInputElement;
+                          if (searchInput) searchInput.focus();
+                        }}
+                        className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                      >
+                        <MagnifyingGlassIcon className="h-5 w-5" />
+                      </button>
+                    )}
+                  </div>
+                  
+                  {/* Mobile Search */}
+                  {isMobile && (
+                    <div className="mt-4 relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <MagnifyingGlassIcon className="h-4 w-4 text-gray-400" />
+                      </div>
+                      <input
+                        id="mobile-search"
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search agents and workflows..."
+                        className="block w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-sm"
+                      />
+                    </div>
+                  )}
                 </div>
                 {dataLoading ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
@@ -1261,6 +1686,72 @@ function App() {
                       <AgentCardSkeleton key={i} />
                     ))}
                   </div>
+                ) : hasActiveSearch ? (
+                  searchResults.agents.length === 0 ? (
+                    <div className="text-center py-16">
+                      <MagnifyingGlassIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No agents found</h3>
+                      <p className="text-gray-600 dark:text-gray-300 mb-4">
+                        Try adjusting your search terms or filters
+                      </p>
+                      <button
+                        onClick={clearSearch}
+                        className="px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors"
+                      >
+                        Clear Search
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
+                      {searchResults.agents.map((agent) => (
+                        <div key={agent.id} className="group bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-cyan-300 dark:hover:border-cyan-600 hover:shadow-xl dark:hover:shadow-cyan-500/10 transition-all duration-300 hover:-translate-y-1 cursor-pointer overflow-hidden">
+                          {/* Card Header with Gradient */}
+                          <div className="h-2 bg-gradient-to-r from-cyan-400 to-blue-500"></div>
+                          
+                          <div className="p-6">
+                            <div className="flex items-start justify-between mb-4">
+                              <div className="flex items-center">
+                                <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl flex items-center justify-center mr-4 shadow-lg group-hover:shadow-cyan-500/25 transition-shadow duration-300">
+                                  <CogIcon className="h-6 w-6 text-white" />
+                                </div>
+                                <div>
+                                  <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-1 group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors">{agent.name}</h3>
+                                  <span className={`inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full ${
+                                    agent.status === 'idle' 
+                                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-700' 
+                                      : agent.status === 'busy'
+                                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-700'
+                                      : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 border border-yellow-200 dark:border-yellow-700'
+                                  }`}>
+                                    <div className={`w-2 h-2 rounded-full mr-2 ${
+                                      agent.status !== 'idle' ? 'animate-pulse' : ''
+                                    } ${
+                                      agent.status === 'idle' ? 'bg-green-500' : 
+                                      agent.status === 'busy' ? 'bg-blue-500' : 'bg-yellow-500'
+                                    }`}></div>
+                                    {agent.status}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <p className="text-gray-600 dark:text-gray-300 text-sm mb-6 leading-relaxed line-clamp-3">{agent.description}</p>
+                            
+                            <button
+                              onClick={() => {
+                                setSelectedAgent(agent.id);
+                                setActiveTab('execute');
+                              }}
+                              className="w-full px-4 py-3 bg-gradient-to-r from-gray-900 to-gray-800 dark:from-gray-700 dark:to-gray-600 text-white rounded-lg hover:from-cyan-600 hover:to-blue-600 transition-all duration-300 text-sm font-semibold shadow-md hover:shadow-lg transform hover:scale-[1.02] flex items-center justify-center group"
+                            >
+                              <PlayIcon className="h-4 w-4 mr-2 group-hover:animate-pulse" />
+                              Execute Agent
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
                 ) : agents.length === 0 ? (
                   <EmptyStateNoAgents />
                 ) : (
@@ -1321,8 +1812,53 @@ function App() {
             {activeTab === 'workflows' && (
               <div>
                 <div className="mb-6">
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Business Workflows</h2>
-                  <p className="text-gray-600 dark:text-gray-300">Automated multi-agent workflows for complex processes</p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                        Business Workflows
+                        {hasActiveSearch && (
+                          <span className="ml-3 text-lg text-purple-600 dark:text-purple-400">
+                            ({searchResults.workflows.length} results)
+                          </span>
+                        )}
+                      </h2>
+                      <p className="text-gray-600 dark:text-gray-300">
+                        {hasActiveSearch 
+                          ? `Search results for "${searchQuery}" in workflows`
+                          : 'Automated multi-agent workflows for complex processes'
+                        }
+                      </p>
+                    </div>
+                    {/* Mobile Search Button */}
+                    {isMobile && (
+                      <button
+                        onClick={() => {
+                          const searchInput = document.getElementById('mobile-search') as HTMLInputElement;
+                          if (searchInput) searchInput.focus();
+                        }}
+                        className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                      >
+                        <MagnifyingGlassIcon className="h-5 w-5" />
+                      </button>
+                    )}
+                  </div>
+                  
+                  {/* Mobile Search */}
+                  {isMobile && (
+                    <div className="mt-4 relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <MagnifyingGlassIcon className="h-4 w-4 text-gray-400" />
+                      </div>
+                      <input
+                        id="mobile-search-workflows"
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search agents and workflows..."
+                        className="block w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-sm"
+                      />
+                    </div>
+                  )}
                 </div>
                 {dataLoading ? (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
@@ -1330,6 +1866,61 @@ function App() {
                       <WorkflowCardSkeleton key={i} />
                     ))}
                   </div>
+                ) : hasActiveSearch ? (
+                  searchResults.workflows.length === 0 ? (
+                    <div className="text-center py-16">
+                      <MagnifyingGlassIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No workflows found</h3>
+                      <p className="text-gray-600 dark:text-gray-300 mb-4">
+                        Try adjusting your search terms or filters
+                      </p>
+                      <button
+                        onClick={clearSearch}
+                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                      >
+                        Clear Search
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+                      {searchResults.workflows.map((workflow) => (
+                        <div key={workflow.id} className="group bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-xl dark:hover:shadow-purple-500/10 transition-all duration-300 hover:-translate-y-1 cursor-pointer overflow-hidden">
+                          {/* Card Header with Gradient */}
+                          <div className="h-2 bg-gradient-to-r from-purple-400 to-pink-500"></div>
+                          
+                          <div className="p-6">
+                            <div className="flex items-start justify-between mb-4">
+                              <div className="flex items-center">
+                                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center mr-4 shadow-lg group-hover:shadow-purple-500/25 transition-shadow duration-300">
+                                  <DocumentTextIcon className="h-6 w-6 text-white" />
+                                </div>
+                                <div>
+                                  <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-1 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">{workflow.name}</h3>
+                                  <span className="inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-700">
+                                    <ChartBarIcon className="h-3 w-3 mr-1" />
+                                    {workflow.task_count} tasks
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <p className="text-gray-600 dark:text-gray-300 text-sm mb-6 leading-relaxed line-clamp-3">{workflow.description}</p>
+                            
+                            <button
+                              onClick={() => {
+                                setSelectedWorkflow(workflow.id);
+                                setActiveTab('execute');
+                              }}
+                              className="w-full px-4 py-3 bg-gradient-to-r from-gray-900 to-gray-800 dark:from-gray-700 dark:to-gray-600 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-300 text-sm font-semibold shadow-md hover:shadow-lg transform hover:scale-[1.02] flex items-center justify-center group"
+                            >
+                              <PlayIcon className="h-4 w-4 mr-2 group-hover:animate-pulse" />
+                              Execute Workflow
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
                 ) : workflows.length === 0 ? (
                   <EmptyStateNoWorkflows />
                 ) : (
@@ -1483,55 +2074,197 @@ function App() {
                     </label>
                 
                 {inputMode === 'file' ? (
-                  <div className="space-y-4">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      onChange={handleFileUpload}
-                      accept=".pdf,.doc,.docx,.ppt,.pptx,.txt"
-                      multiple
-                      className="hidden"
-                    />
-                    <button
+                  <div className="space-y-6">
+                    {/* Enhanced Drag & Drop Zone */}
+                    <div
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      className={`relative transition-all duration-300 ${
+                        isDragOver 
+                          ? 'border-2 border-dashed border-cyan-400 bg-cyan-50 dark:bg-cyan-900/20 scale-105' 
+                          : 'border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/10'
+                      } rounded-xl p-8 cursor-pointer group`}
                       onClick={() => fileInputRef.current?.click()}
-                      className="w-full p-6 border-2 border-dashed border-gray-300 rounded-lg hover:border-cyan-400 hover:bg-cyan-50 transition-colors"
                     >
-                      <CloudArrowUpIcon className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-                      <p className="text-sm text-gray-600">
-                        Click to upload PDF, Word, PowerPoint, or text files (multiple allowed)
-                      </p>
-                    </button>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        onChange={handleFileUpload}
+                        accept=".pdf,.doc,.docx,.ppt,.pptx,.txt"
+                        multiple
+                        className="hidden"
+                      />
+                      
+                      <div className="text-center">
+                        <div className={`mx-auto mb-4 transition-transform duration-300 ${isDragOver ? 'scale-110' : 'group-hover:scale-105'}`}>
+                          <CloudArrowUpIcon className={`h-12 w-12 mx-auto transition-colors duration-300 ${
+                            isDragOver ? 'text-cyan-500' : 'text-gray-400 group-hover:text-cyan-500'
+                          }`} />
+                        </div>
+                        
+                        <h3 className={`text-lg font-semibold mb-2 transition-colors duration-300 ${
+                          isDragOver ? 'text-cyan-700 dark:text-cyan-300' : 'text-gray-700 dark:text-gray-300 group-hover:text-cyan-700 dark:group-hover:text-cyan-300'
+                        }`}>
+                          {isDragOver ? 'Drop files here!' : 'Drag & drop files or click to browse'}
+                        </h3>
+                        
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                          Supports PDF, Word, PowerPoint, and text files • Max 10MB per file
+                        </p>
+                        
+                        <div className="flex flex-wrap gap-2 justify-center">
+                          {['PDF', 'DOC', 'PPT', 'TXT'].map((type) => (
+                            <span key={type} className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded text-xs font-medium">
+                              {type}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {isDragOver && (
+                        <div className="absolute inset-0 bg-cyan-500 bg-opacity-10 rounded-xl border-2 border-cyan-400 animate-pulse"></div>
+                      )}
+                    </div>
                     
+                    {/* File List with Enhanced UI */}
                     {uploadedFiles.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-sm font-medium text-gray-700">Uploaded Files:</p>
-                        {uploadedFiles.map((file, index) => (
-                          <div key={index} className="flex items-center justify-between bg-gray-50 border border-gray-200 p-3 rounded-lg">
-                            <div className="flex items-center">
-                              <DocumentIcon className="h-4 w-4 text-cyan-600 mr-3" />
-                              <span className="text-sm text-gray-900 font-medium">{file.name}</span>
-                            </div>
+                      <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                        {/* File Management Header */}
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center space-x-3">
+                            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                              Uploaded Files ({uploadedFiles.length})
+                            </h3>
+                            {uploadedFiles.length > 1 && (
+                              <div className="flex items-center space-x-2">
+                                <button
+                                  onClick={selectAllFiles}
+                                  className="text-xs px-2 py-1 bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400 rounded hover:bg-cyan-200 dark:hover:bg-cyan-900/50 transition-colors"
+                                >
+                                  {selectedFiles.length === uploadedFiles.length ? 'Deselect All' : 'Select All'}
+                                </button>
+                                {selectedFiles.length > 0 && (
+                                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                                    {selectedFiles.length} selected
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          
+                          <div className="flex items-center space-x-2">
+                            {selectedFiles.length > 0 && (
+                              <button
+                                onClick={removeSelectedFiles}
+                                className="flex items-center text-xs px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+                              >
+                                <TrashIcon className="h-3 w-3 mr-1" />
+                                Remove Selected
+                              </button>
+                            )}
                             <button
-                              onClick={() => removeFile(index)}
-                              className="text-gray-500 hover:text-gray-700 text-sm font-medium"
+                              onClick={clearAllFiles}
+                              className="text-xs px-3 py-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors"
                             >
-                              Remove
+                              Clear All
                             </button>
                           </div>
-                        ))}
+                        </div>
+                        
+                        {/* File Grid */}
+                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                          {uploadedFiles.map((file, index) => (
+                            <div 
+                              key={index} 
+                              className={`flex items-center justify-between p-3 rounded-lg border transition-all duration-200 ${
+                                selectedFiles.includes(index)
+                                  ? 'bg-cyan-50 dark:bg-cyan-900/20 border-cyan-200 dark:border-cyan-700 shadow-sm'
+                                  : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                              }`}
+                            >
+                              <div className="flex items-center space-x-3 flex-1 min-w-0">
+                                {/* File Selection Checkbox */}
+                                <input
+                                  type="checkbox"
+                                  checked={selectedFiles.includes(index)}
+                                  onChange={() => toggleFileSelection(index)}
+                                  className="h-4 w-4 text-cyan-600 focus:ring-cyan-500 border-gray-300 rounded"
+                                />
+                                
+                                {/* File Icon */}
+                                <div className="flex-shrink-0">
+                                  {getFileIcon(file.name, file.type)}
+                                </div>
+                                
+                                {/* File Info */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center space-x-2">
+                                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                      {file.name}
+                                    </p>
+                                    <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${getFileTypeColor(file.name)}`}>
+                                      {file.name.split('.').pop()?.toUpperCase()}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    {formatFileSize(file.size)} • {file.type}
+                                  </p>
+                                </div>
+                              </div>
+                              
+                              {/* File Actions */}
+                              <div className="flex items-center space-x-2 ml-3">
+                                <button
+                                  onClick={() => {
+                                    // File preview functionality could be added here
+                                    showToast('info', 'Preview', `Preview for ${file.name} (feature coming soon)`);
+                                  }}
+                                  className="p-1 text-gray-400 hover:text-cyan-600 transition-colors"
+                                  title="Preview file"
+                                >
+                                  <EyeIcon className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={() => removeFile(index)}
+                                  className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                                  title="Remove file"
+                                >
+                                  <XMarkIcon className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        
+                        {/* File Statistics */}
+                        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+                          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                            <span>
+                              Total: {uploadedFiles.reduce((acc, file) => acc + file.size, 0) > 0 ? formatFileSize(uploadedFiles.reduce((acc, file) => acc + file.size, 0)) : '0 Bytes'}
+                            </span>
+                            <span>
+                              {uploadedFiles.length} file{uploadedFiles.length !== 1 ? 's' : ''}
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     )}
                     
+                    {/* Task Description */}
                     <div>
-                      <label className="block text-sm font-semibold text-gray-900 mb-2">
+                      <label className="block text-sm font-semibold text-gray-900 dark:text-white mb-3">
                         What would you like to do with these files?
                       </label>
                       <textarea
                         value={inputData}
                         onChange={(e) => setInputData(e.target.value)}
-                        placeholder="e.g., Compare these documents and summarize the key differences..."
-                        className="w-full p-3 border border-gray-300 rounded-lg h-24 text-sm bg-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                        placeholder="e.g., Compare these documents and summarize the key differences, extract key information, analyze content patterns..."
+                        className="w-full p-4 border border-gray-300 dark:border-gray-600 rounded-lg h-28 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 resize-none"
                       />
+                      <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        💡 Be specific about what you want to analyze or extract from your files
+                      </p>
                     </div>
                   </div>
                 ) : (
