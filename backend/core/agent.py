@@ -72,8 +72,8 @@ class AgentExecution(BaseModel):
 class BaseAgent:
     """Base class for all AI agents"""
     
-    def __init__(self, config: AgentConfig):
-        self.id = str(uuid.uuid4())
+    def __init__(self, config: AgentConfig, agent_id: Optional[str] = None):
+        self.id = agent_id if agent_id else str(uuid.uuid4())
         self.config = config
         self.status = AgentStatus.IDLE
         self.llm = None
@@ -97,11 +97,11 @@ class BaseAgent:
                 # Get agent-specific model configuration
                 agent_config = AGENT_MODEL_CONFIG.get(self.id, DEFAULT_MODEL_CONFIG)
                 
-                # Override with environment variable if set
-                ollama_model = os.getenv("OLLAMA_MODEL", agent_config["model"])
+                # Use agent-specific model (no environment override)
+                ollama_model = agent_config["model"]
                 ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
                 
-                # Use agent-specific temperature unless overridden
+                # Use agent-specific temperature
                 temperature = agent_config.get("temperature", self.config.temperature)
                 
                 print(f"Initializing {self.config.name} with Ollama model: {ollama_model} (temp: {temperature})")
@@ -189,6 +189,33 @@ class BaseAgent:
         self.tools = [available_tools[tool_name] 
                      for tool_name in self.config.tools 
                      if tool_name in available_tools]
+    
+    def _apply_model_override(self, model_name: str):
+        """Apply a temporary model override for this execution"""
+        import os
+        llm_provider = os.getenv("LLM_PROVIDER", "mock").lower()
+        
+        if llm_provider == "ollama":
+            try:
+                from langchain_community.chat_models import ChatOllama
+                
+                ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+                
+                print(f"Applying model override for {self.config.name}: {model_name}")
+                
+                # Create new LLM instance with override model
+                self.llm = ChatOllama(
+                    model=model_name,
+                    temperature=self.config.temperature,
+                    base_url=ollama_base_url
+                )
+                
+                # Recreate executor with new LLM
+                self._create_executor()
+                
+            except Exception as e:
+                print(f"ERROR: Failed to apply model override: {e}")
+                # Keep existing LLM if override fails
     
     def _create_executor(self):
         """Create the agent executor with tools and prompt"""
@@ -384,6 +411,10 @@ Always explain your reasoning before taking actions."""),
     
     def _format_input(self, input_data: Dict[str, Any]) -> str:
         """Format input data for the agent"""
+        # Handle model override if provided
+        if "model_override" in input_data:
+            self._apply_model_override(input_data["model_override"])
+            
         if "task" in input_data:
             task = input_data["task"]
             
@@ -767,11 +798,7 @@ class ProcessAutomationAgent(BaseAgent):
             ],
             tools=["analyze_data", "api_call", "search"]
         )
-        super().__init__(config)
-        # Use consistent ID for persistent memory
-        self.id = "process_automation_agent"
-        # Re-initialize persistent memory with the new ID
-        self._setup_persistent_memory()
+        super().__init__(config, agent_id="process_automation_agent")
 
 
 class DecisionMakingAgent(BaseAgent):
@@ -789,8 +816,4 @@ class DecisionMakingAgent(BaseAgent):
             ],
             tools=["calculate", "analyze_data", "search"]
         )
-        super().__init__(config)
-        # Use consistent ID for persistent memory
-        self.id = "decision_making_agent"
-        # Re-initialize persistent memory with the new ID
-        self._setup_persistent_memory()
+        super().__init__(config, agent_id="decision_making_agent")

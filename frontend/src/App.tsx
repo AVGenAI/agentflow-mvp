@@ -29,7 +29,9 @@ import {
   CodeBracketIcon,
   TrashIcon,
   EyeIcon,
-  ArrowDownTrayIcon
+  ArrowDownTrayIcon,
+  ChevronDownIcon,
+  ChevronUpIcon
 } from '@heroicons/react/24/outline';
 
 const API_URL = 'http://localhost:8000/api';
@@ -39,6 +41,13 @@ interface Agent {
   name: string;
   description: string;
   status: string;
+}
+
+interface Model {
+  name: string;
+  display_name: string;
+  installed: boolean;
+  size?: string;
 }
 
 interface Workflow {
@@ -406,6 +415,8 @@ function App() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<string>('');
   const [selectedWorkflow, setSelectedWorkflow] = useState<string>('');
+  const [models, setModels] = useState<Model[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>('llama3.2:latest');
   const [inputData, setInputData] = useState<string>('');
   const [inputMode, setInputMode] = useState<'text' | 'json' | 'file'>('text');
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
@@ -415,6 +426,7 @@ function App() {
   const [dataLoading, setDataLoading] = useState(true);
   const [showRawOutput, setShowRawOutput] = useState(false);
   const [showFullHistory, setShowFullHistory] = useState(false);
+  const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Panel state management
@@ -464,7 +476,7 @@ function App() {
   useEffect(() => {
     const loadInitialData = async () => {
       setDataLoading(true);
-      await Promise.all([fetchAgents(), fetchWorkflows()]);
+      await Promise.all([fetchAgents(), fetchWorkflows(), fetchModels()]);
       setDataLoading(false);
     };
     loadInitialData();
@@ -580,6 +592,25 @@ function App() {
   };
 
   const hasActiveSearch = searchQuery.trim() || filters.status !== 'all' || filters.type !== 'all';
+
+  // Thread expansion utility functions
+  const toggleThreadExpansion = (conversationId: string) => {
+    const newExpandedThreads = new Set(expandedThreads);
+    if (newExpandedThreads.has(conversationId)) {
+      newExpandedThreads.delete(conversationId);
+    } else {
+      newExpandedThreads.add(conversationId);
+    }
+    setExpandedThreads(newExpandedThreads);
+  };
+
+  const expandAllThreads = (conversationIds: string[]) => {
+    setExpandedThreads(new Set(conversationIds));
+  };
+
+  const collapseAllThreads = () => {
+    setExpandedThreads(new Set());
+  };
 
   // File management utility functions
   const getFileIcon = (fileName: string, fileType: string) => {
@@ -824,6 +855,20 @@ function App() {
     }
   };
 
+  const fetchModels = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/models`);
+      setModels(response.data);
+    } catch (error) {
+      console.error('Error fetching models:', error);
+      // Set default models if fetch fails
+      setModels([
+        { name: 'llama3.2:latest', display_name: 'Llama 3.2 Latest', installed: false },
+        { name: 'deepseek-r1:14b', display_name: 'DeepSeek R1 14B', installed: false }
+      ]);
+    }
+  };
+
   const executeAgent = async () => {
     if (!selectedAgent || (!inputData && uploadedFiles.length === 0)) return;
 
@@ -861,7 +906,8 @@ function App() {
 
       const response = await axios.post(`${API_URL}/agents/execute`, {
         agent_id: selectedAgent,
-        input_data: parsedInput
+        input_data: parsedInput,
+        model_override: selectedModel
       });
       setExecutionResult(response.data);
       setProcessingStatus('completed');
@@ -901,7 +947,8 @@ function App() {
 
       const response = await axios.post(`${API_URL}/workflows/execute`, {
         workflow_id: selectedWorkflow,
-        input_data: parsedInput
+        input_data: parsedInput,
+        model_override: selectedModel
       });
       setExecutionResult(response.data);
       setProcessingStatus('completed');
@@ -1984,13 +2031,13 @@ function App() {
 
                   {/* Agent Selection */}
                   <div className="mb-6">
-                    <label className="block text-sm font-semibold text-gray-900 mb-3">
+                    <label className="block text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
                       Select Agent
                     </label>
                     <select
                       value={selectedAgent}
                       onChange={(e) => setSelectedAgent(e.target.value)}
-                      className="w-full p-3 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                      className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
                     >
                       <option value="">Choose an agent...</option>
                       {agents.map((agent) => (
@@ -2003,13 +2050,13 @@ function App() {
 
                   {/* Workflow Selection */}
                   <div className="mb-6">
-                    <label className="block text-sm font-semibold text-gray-900 mb-3">
+                    <label className="block text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
                       Or Select Workflow
                     </label>
                     <select
                       value={selectedWorkflow}
                       onChange={(e) => setSelectedWorkflow(e.target.value)}
-                      className="w-full p-3 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                      className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
                     >
                       <option value="">Choose a workflow...</option>
                       {workflows.map((workflow) => (
@@ -2020,9 +2067,36 @@ function App() {
                     </select>
                   </div>
 
+                  {/* Model Selection */}
+                  <div className="mb-6">
+                    <label className="block text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
+                      Select Model
+                    </label>
+                    <select
+                      value={selectedModel}
+                      onChange={(e) => setSelectedModel(e.target.value)}
+                      className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                    >
+                      {models.map((model) => (
+                        <option key={model.name} value={model.name}>
+                          {model.display_name} 
+                          {model.size && ` (${model.size})`}
+                          {model.installed && ' ✓'}
+                        </option>
+                      ))}
+                    </select>
+                    {selectedModel && (
+                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                        {models.find(m => m.name === selectedModel)?.installed 
+                          ? 'Model is installed and ready to use' 
+                          : 'Model will be downloaded on first use'}
+                      </p>
+                    )}
+                  </div>
+
                   {/* Input Mode Selector */}
                   <div className="mb-6">
-                    <label className="block text-sm font-semibold text-gray-900 mb-3">
+                    <label className="block text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
                       Input Mode
                     </label>
                     <div className="flex space-x-2">
@@ -2067,7 +2141,7 @@ function App() {
 
                   {/* Input Data */}
                   <div className="mb-6">
-                    <label className="block text-sm font-semibold text-gray-900 mb-3">
+                    <label className="block text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
                       {inputMode === 'text' ? 'Enter your request' : 
                        inputMode === 'json' ? 'Input Data (JSON)' : 
                        'Upload Files'}
@@ -2374,130 +2448,202 @@ function App() {
                         </div>
                       </div>
                   
-                      {/* Conversation History */}
+                      {/* Enhanced Conversation History with Expandable Threads */}
                       {executionResult.output?.conversation_history && executionResult.output.conversation_history.length > 0 && (
                         <div className="p-6 border-b border-gray-200">
                           <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold text-gray-900">Conversation History</h3>
-                            <div className="text-right">
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Conversation History</h3>
+                            <div className="flex items-center gap-3">
                               {(() => {
                                 const messages = executionResult.output.conversation_history.filter((msg: any) => !msg.is_separator);
-                                const conversations = executionResult.output.conversation_history.filter((msg: any) => msg.is_separator).length;
+                                const separators = executionResult.output.conversation_history.filter((msg: any) => msg.is_separator);
+                                const conversations = separators.length;
                                 const humanMessages = messages.filter((msg: any) => msg.role === 'human').length;
                                 const aiMessages = messages.filter((msg: any) => msg.role === 'ai').length;
+                                const uniqueConversationIds = Array.from(new Set(separators.map((sep: any) => sep.conversation_id).filter(Boolean))) as string[];
+                                
                                 return (
-                                  <div className="space-y-2">
-                                    <div className="text-xs text-gray-500">
-                                      {conversations} conversations • {messages.length} total messages
+                                  <>
+                                    <div className="text-right">
+                                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                                        {conversations} conversations • {messages.length} total messages
+                                      </div>
+                                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                                        👤 {humanMessages} user • 🤖 {aiMessages} AI
+                                      </div>
                                     </div>
-                                    <div className="text-xs text-gray-500">
-                                      👤 {humanMessages} user • 🤖 {aiMessages} AI
+                                    <div className="flex gap-2">
+                                      {conversations > 1 && (
+                                        <>
+                                          <button
+                                            onClick={() => setShowFullHistory(!showFullHistory)}
+                                            className="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-xs hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors border border-gray-200 dark:border-gray-600"
+                                          >
+                                            {showFullHistory ? 'Show Current Only' : 'Show All History'}
+                                          </button>
+                                          {showFullHistory && (
+                                            <>
+                                              <button
+                                                onClick={() => expandAllThreads(uniqueConversationIds)}
+                                                className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg text-xs hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors border border-blue-200 dark:border-blue-700"
+                                              >
+                                                Expand All
+                                              </button>
+                                              <button
+                                                onClick={collapseAllThreads}
+                                                className="px-3 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 rounded-lg text-xs hover:bg-orange-200 dark:hover:bg-orange-900/50 transition-colors border border-orange-200 dark:border-orange-700"
+                                              >
+                                                Collapse All
+                                              </button>
+                                            </>
+                                          )}
+                                        </>
+                                      )}
                                     </div>
-                                    {conversations > 1 && (
-                                      <button
-                                        onClick={() => setShowFullHistory(!showFullHistory)}
-                                        className="px-3 py-1 bg-gray-100 text-gray-700 rounded-lg text-xs hover:bg-gray-200 transition-colors border border-gray-200"
-                                      >
-                                        {showFullHistory ? 'Show Current Only' : 'Show All History'}
-                                      </button>
-                                    )}
-                                  </div>
+                                  </>
                                 );
                               })()}
                             </div>
                           </div>
-                          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 max-h-96 overflow-y-auto">
-                        {executionResult.output.conversation_history
-                          .filter((msg: any) => {
-                            // If showing full history, show everything
-                            if (showFullHistory) return true;
-                            
-                            // If showing current only, filter to current conversation
-                            // Current conversation is after the last "--- Current Conversation ---" separator
-                            const currentSeparatorIndex = executionResult.output.conversation_history
-                              .findLastIndex((m: any) => m.is_separator && m.content.includes("Current Conversation"));
-                            
-                            // If no current separator found, show only non-separator messages from this session
-                            if (currentSeparatorIndex === -1) {
-                              return !msg.is_separator || msg.content.includes("Current Conversation");
-                            }
-                            
-                            // Show everything from current conversation separator onwards
-                            return executionResult.output.conversation_history.indexOf(msg) >= currentSeparatorIndex;
-                          })
-                          .map((msg: any, index: number) => {
-                          // Handle conversation separators
-                          if (msg.is_separator) {
-                            return (
-                              <div key={msg.conversation_id || index} className="my-4">
-                                <div className="flex items-center">
-                                  <div className="flex-grow border-t border-gray-300"></div>
-                                  <span className="px-3 text-xs text-gray-600 bg-white border border-gray-200 rounded-full">
-                                    {msg.content}
-                                  </span>
-                                  <div className="flex-grow border-t border-gray-300"></div>
-                                </div>
-                              </div>
-                            );
-                          }
-                          
-                          // Regular messages
-                          return (
-                            <div key={msg.id || index} className={`mb-3 ${
-                              msg.role === 'human' ? 'ml-0 mr-8' : msg.role === 'ai' ? 'ml-8 mr-0' : 'mx-4'
-                            }`}>
-                              <div className={`rounded-lg p-4 border ${
-                                msg.role === 'human' ? 'bg-cyan-50 border-cyan-200 text-cyan-900' :
-                                msg.role === 'ai' ? 'bg-green-50 border-green-200 text-green-900' :
-                                'bg-gray-50 border-gray-200 text-gray-900'
-                              }`}>
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className={`font-semibold text-xs uppercase px-2 py-1 rounded-full ${
-                                    msg.role === 'human' ? 'bg-cyan-100 text-cyan-800' :
-                                    msg.role === 'ai' ? 'bg-green-100 text-green-800' :
-                                    'bg-gray-100 text-gray-800'
-                                  }`}>{msg.role}</span>
-                                  <div className="text-xs text-gray-500 space-x-2">
-                                    <span>{new Date(msg.timestamp).toLocaleString('en-US', {
-                                      timeZone: 'America/Chicago',
-                                      year: 'numeric',
-                                      month: 'short',
-                                      day: 'numeric',
-                                      hour: '2-digit',
-                                      minute: '2-digit',
-                                      second: '2-digit',
-                                      timeZoneName: 'short'
-                                    })}</span>
-                                    {msg.conversation_id && (
-                                      <span className="px-2 py-1 bg-white bg-opacity-70 rounded text-gray-600">
-                                        ID: {msg.conversation_id.slice(0, 8)}...
-                                      </span>
+                          <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 max-h-96 overflow-y-auto">
+                            {(() => {
+                              // Group messages by conversation
+                              const conversationGroups: {[key: string]: any[]} = {};
+                              let currentConversationId = 'current';
+                              
+                              const filteredMessages = executionResult.output.conversation_history.filter((msg: any) => {
+                                if (showFullHistory) return true;
+                                const currentSeparatorIndex = executionResult.output.conversation_history
+                                  .findLastIndex((m: any) => m.is_separator && m.content.includes("Current Conversation"));
+                                if (currentSeparatorIndex === -1) {
+                                  return !msg.is_separator || msg.content.includes("Current Conversation");
+                                }
+                                return executionResult.output.conversation_history.indexOf(msg) >= currentSeparatorIndex;
+                              });
+                              
+                              filteredMessages.forEach((msg: any) => {
+                                if (msg.is_separator) {
+                                  currentConversationId = msg.conversation_id || msg.content;
+                                  if (!conversationGroups[currentConversationId]) {
+                                    conversationGroups[currentConversationId] = [];
+                                  }
+                                  conversationGroups[currentConversationId].push(msg);
+                                } else {
+                                  if (!conversationGroups[currentConversationId]) {
+                                    conversationGroups[currentConversationId] = [];
+                                  }
+                                  conversationGroups[currentConversationId].push(msg);
+                                }
+                              });
+                              
+                              return Object.entries(conversationGroups).map(([conversationId, messages]) => {
+                                const separator = messages.find(msg => msg.is_separator);
+                                const nonSeparatorMessages = messages.filter(msg => !msg.is_separator);
+                                const isExpanded = expandedThreads.has(conversationId);
+                                const isCurrentConversation = separator?.content?.includes("Current Conversation") || conversationId === 'current';
+                                
+                                return (
+                                  <div key={conversationId} className="mb-4">
+                                    {separator && (
+                                      <div className="mb-3">
+                                        <button
+                                          onClick={() => toggleThreadExpansion(conversationId)}
+                                          className="w-full flex items-center justify-between p-3 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                                        >
+                                          <div className="flex items-center gap-3">
+                                            {isExpanded ? (
+                                              <ChevronDownIcon className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+                                            ) : (
+                                              <ChevronUpIcon className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+                                            )}
+                                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                              {separator.content}
+                                            </span>
+                                            <span className={`px-2 py-1 text-xs rounded-full ${
+                                              isCurrentConversation 
+                                                ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-700'
+                                                : 'bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-400'
+                                            }`}>
+                                              {nonSeparatorMessages.length} messages
+                                            </span>
+                                          </div>
+                                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                                            {separator.timestamp && new Date(separator.timestamp).toLocaleString('en-US', {
+                                              timeZone: 'America/Chicago',
+                                              month: 'short',
+                                              day: 'numeric',
+                                              hour: '2-digit',
+                                              minute: '2-digit',
+                                              timeZoneName: 'short'
+                                            })}
+                                          </div>
+                                        </button>
+                                      </div>
+                                    )}
+                                    
+                                    {(isExpanded || isCurrentConversation) && (
+                                      <div className="space-y-3 ml-4">
+                                        {nonSeparatorMessages.map((msg: any, index: number) => (
+                                          <div key={msg.id || index} className={`${
+                                            msg.role === 'human' ? 'ml-0 mr-8' : msg.role === 'ai' ? 'ml-8 mr-0' : 'mx-4'
+                                          }`}>
+                                            <div className={`rounded-lg p-4 border ${
+                                              msg.role === 'human' ? 'bg-cyan-50 dark:bg-cyan-900/20 border-cyan-200 dark:border-cyan-700 text-cyan-900 dark:text-cyan-100' :
+                                              msg.role === 'ai' ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700 text-green-900 dark:text-green-100' :
+                                              'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-900 dark:text-gray-100'
+                                            }`}>
+                                              <div className="flex items-center justify-between mb-2">
+                                                <span className={`font-semibold text-xs uppercase px-2 py-1 rounded-full ${
+                                                  msg.role === 'human' ? 'bg-cyan-100 dark:bg-cyan-800 text-cyan-800 dark:text-cyan-200' :
+                                                  msg.role === 'ai' ? 'bg-green-100 dark:bg-green-800 text-green-800 dark:text-green-200' :
+                                                  'bg-gray-100 dark:bg-gray-600 text-gray-800 dark:text-gray-200'
+                                                }`}>{msg.role}</span>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400 space-x-2">
+                                                  <span>{new Date(msg.timestamp).toLocaleString('en-US', {
+                                                    timeZone: 'America/Chicago',
+                                                    year: 'numeric',
+                                                    month: 'short',
+                                                    day: 'numeric',
+                                                    hour: '2-digit',
+                                                    minute: '2-digit',
+                                                    second: '2-digit',
+                                                    timeZoneName: 'short'
+                                                  })}</span>
+                                                  {msg.conversation_id && (
+                                                    <span className="px-2 py-1 bg-white dark:bg-gray-600 bg-opacity-70 dark:bg-opacity-70 rounded text-gray-600 dark:text-gray-400">
+                                                      ID: {msg.conversation_id.slice(0, 8)}...
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              </div>
+                                              <div className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</div>
+                                              {(msg.model_used || msg.token_count || msg.meta_data?.tokens_per_second) && (
+                                                <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600 text-xs text-gray-500 dark:text-gray-400 space-x-4">
+                                                  {msg.model_used && (
+                                                    <span>Model: {msg.model_used}</span>
+                                                  )}
+                                                  {msg.token_count && (
+                                                    <span>Tokens: {msg.token_count}</span>
+                                                  )}
+                                                  {msg.meta_data?.tokens_per_second && (
+                                                    <span className="text-cyan-600 dark:text-cyan-400 font-medium">
+                                                      ⚡ {msg.meta_data.tokens_per_second} tokens/sec
+                                                    </span>
+                                                  )}
+                                                  {msg.meta_data?.processing_duration && (
+                                                    <span>Duration: {msg.meta_data.processing_duration.toFixed(2)}s</span>
+                                                  )}
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
                                     )}
                                   </div>
-                                </div>
-                                <div className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</div>
-                                {(msg.model_used || msg.token_count || msg.meta_data?.tokens_per_second) && (
-                                  <div className="mt-2 pt-2 border-t border-gray-200 text-xs text-gray-500 space-x-4">
-                                    {msg.model_used && (
-                                      <span>Model: {msg.model_used}</span>
-                                    )}
-                                    {msg.token_count && (
-                                      <span>Tokens: {msg.token_count}</span>
-                                    )}
-                                    {msg.meta_data?.tokens_per_second && (
-                                      <span className="text-cyan-600 font-medium">
-                                        ⚡ {msg.meta_data.tokens_per_second} tokens/sec
-                                      </span>
-                                    )}
-                                    {msg.meta_data?.processing_duration && (
-                                      <span>Duration: {msg.meta_data.processing_duration.toFixed(2)}s</span>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                          })}
+                                );
+                              });
+                            })()}
                           </div>
                         </div>
                       )}

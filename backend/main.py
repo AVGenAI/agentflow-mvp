@@ -61,6 +61,7 @@ class CreateAgentRequest(BaseModel):
 class ExecuteAgentRequest(BaseModel):
     agent_id: str
     input_data: Dict[str, Any]
+    model_override: Optional[str] = None
 
 class CreateWorkflowRequest(BaseModel):
     workflow: WorkflowDefinition
@@ -68,6 +69,7 @@ class CreateWorkflowRequest(BaseModel):
 class ExecuteWorkflowRequest(BaseModel):
     workflow_id: str
     input_data: Dict[str, Any]
+    model_override: Optional[str] = None
 
 class AgentResponse(BaseModel):
     id: str
@@ -223,6 +225,10 @@ async def execute_agent(request: ExecuteAgentRequest, background_tasks: Backgrou
     
     agent = agents_registry[request.agent_id]
     
+    # Add model override to input data if provided
+    if request.model_override:
+        request.input_data["model_override"] = request.model_override
+    
     # Execute agent asynchronously
     execution = await agent.execute(request.input_data)
     
@@ -282,6 +288,10 @@ async def execute_workflow(request: ExecuteWorkflowRequest):
     if request.workflow_id not in orchestrator.workflows:
         raise HTTPException(status_code=404, detail="Workflow not found")
     
+    # Add model override to input data if provided
+    if request.model_override:
+        request.input_data["model_override"] = request.model_override
+    
     # Execute workflow
     execution = await orchestrator.execute_workflow(
         request.workflow_id,
@@ -319,6 +329,67 @@ async def health_check():
         "agents_count": len(agents_registry),
         "workflows_count": len(orchestrator.workflows)
     }
+
+# Models endpoint
+@app.get("/api/models")
+async def get_available_models():
+    """Get available LLM models"""
+    import subprocess
+    import json
+    
+    try:
+        # Get available Ollama models
+        result = subprocess.run(['ollama', 'list'], capture_output=True, text=True)
+        if result.returncode == 0:
+            # Parse the output
+            lines = result.stdout.strip().split('\n')
+            models = []
+            
+            if len(lines) > 1:  # Skip header line
+                for line in lines[1:]:
+                    parts = line.split()
+                    if parts:
+                        model_name = parts[0].split(':')[0]  # Get base model name without tags
+                        full_name = parts[0]  # Full name with tag
+                        if not any(m['name'] == full_name for m in models):
+                            models.append({
+                                "name": full_name,
+                                "display_name": full_name,
+                                "provider": "ollama",
+                                "available": True
+                            })
+            
+            # Add some common models that might not be installed
+            common_models = [
+                {"name": "llama2:latest", "display_name": "Llama 2 (7B)", "provider": "ollama"},
+                {"name": "deepseek-r1:latest", "display_name": "DeepSeek R1", "provider": "ollama"},
+                {"name": "qwen2.5-coder:7b-instruct", "display_name": "Qwen 2.5 Coder (7B)", "provider": "ollama"},
+                {"name": "gemma3:12b", "display_name": "Gemma 3 (12B)", "provider": "ollama"},
+                {"name": "mistral:7b", "display_name": "Mistral (7B)", "provider": "ollama"},
+            ]
+            
+            for common in common_models:
+                if not any(m['name'] == common['name'] for m in models):
+                    common['available'] = False
+                    models.append(common)
+            
+            return models
+        else:
+            # Fallback to predefined list if ollama command fails
+            return [
+                {"name": "llama2:latest", "display_name": "Llama 2 (7B)", "provider": "ollama", "available": True},
+                {"name": "deepseek-r1:latest", "display_name": "DeepSeek R1", "provider": "ollama", "available": True},
+                {"name": "qwen2.5-coder:7b-instruct", "display_name": "Qwen 2.5 Coder (7B)", "provider": "ollama", "available": True},
+                {"name": "gemma3:12b", "display_name": "Gemma 3 (12B)", "provider": "ollama", "available": True},
+            ]
+    except Exception as e:
+        # Return default models if any error occurs
+        return [
+            {"name": "llama2:latest", "display_name": "Llama 2 (7B)", "provider": "ollama", "available": True},
+            {"name": "deepseek-r1:latest", "display_name": "DeepSeek R1", "provider": "ollama", "available": True},
+            {"name": "qwen2.5-coder:7b-instruct", "display_name": "Qwen 2.5 Coder (7B)", "provider": "ollama", "available": True},
+            {"name": "gemma3:12b", "display_name": "Gemma 3 (12B)", "provider": "ollama", "available": True},
+        ]
 
 
 # Example endpoints for testing
