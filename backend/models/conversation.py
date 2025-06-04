@@ -65,7 +65,7 @@ class Message(Base):
             'token_count': self.token_count,
             'model_used': self.model_used,
             'temperature': self.temperature,
-            'metadata': self.meta_data
+            'meta_data': self.meta_data  # Keep as meta_data to match frontend expectations
         }
 
 class AgentMemory(Base):

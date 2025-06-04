@@ -8,7 +8,10 @@ import {
   BoltIcon,
   DocumentTextIcon,
   CloudArrowUpIcon,
-  DocumentIcon
+  DocumentIcon,
+  Bars3Icon,
+  ChevronLeftIcon,
+  ChevronRightIcon
 } from '@heroicons/react/24/outline';
 
 const API_URL = 'http://localhost:8000/api';
@@ -48,11 +51,66 @@ function App() {
   const [showRawOutput, setShowRawOutput] = useState(false);
   const [showFullHistory, setShowFullHistory] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Panel state management
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(320);
+  const [executePanelSplit, setExecutePanelSplit] = useState(50);
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeType, setResizeType] = useState<'sidebar' | 'execute' | null>(null);
 
   useEffect(() => {
     fetchAgents();
     fetchWorkflows();
   }, []);
+
+  // Mouse event handlers for resizing
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+
+      if (resizeType === 'sidebar') {
+        const newWidth = Math.min(Math.max(e.clientX, 200), 500);
+        setSidebarWidth(newWidth);
+      } else if (resizeType === 'execute') {
+        const container = document.getElementById('execute-container');
+        if (container) {
+          const rect = container.getBoundingClientRect();
+          const newSplit = Math.min(Math.max(((e.clientX - rect.left) / rect.width) * 100, 20), 80);
+          setExecutePanelSplit(newSplit);
+        }
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      setResizeType(null);
+      document.body.style.cursor = 'default';
+      document.body.style.userSelect = 'auto';
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = resizeType === 'sidebar' ? 'col-resize' : 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing, resizeType]);
+
+  const startSidebarResize = () => {
+    setIsResizing(true);
+    setResizeType('sidebar');
+  };
+
+  const startExecuteResize = () => {
+    setIsResizing(true);
+    setResizeType('execute');
+  };
 
   const fetchAgents = async () => {
     try {
@@ -270,8 +328,17 @@ function App() {
       mainText = JSON.stringify(output, null, 2);
     }
 
+    // Ensure mainText is a string
+    if (typeof mainText !== 'string') {
+      mainText = String(mainText || '');
+    }
+
     // Convert markdown-like formatting to HTML
     const formatMarkdownToHtml = (text: string): React.ReactNode => {
+      // Ensure text is a string
+      if (typeof text !== 'string') {
+        text = String(text || '');
+      }
       const lines = text.split('\n');
       const elements: React.ReactNode[] = [];
       let currentList: string[] = [];
@@ -471,6 +538,13 @@ function App() {
         <div className="w-full px-6">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
+              <button
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className="mr-4 p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              >
+                <Bars3Icon className="h-6 w-6" />
+              </button>
               <BoltIcon className="h-8 w-8 text-cyan-400 mr-3" />
               <h1 className="text-2xl font-bold text-white">AgentFlow</h1>
               <span className="ml-2 text-sm text-gray-400 font-normal">Enterprise AI Platform</span>
@@ -482,69 +556,93 @@ function App() {
         </div>
       </header>
 
-      {/* Main Layout - 20/80 Split */}
+      {/* Main Layout - Resizable Split */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar - 20% */}
-        <div className="w-1/5 bg-gray-900 border-r border-gray-700 flex flex-col">
+        {/* Left Sidebar - Collapsible & Resizable */}
+        <div 
+          className={`bg-gray-900 border-r border-gray-700 flex flex-col transition-all duration-300 ease-in-out relative ${
+            sidebarCollapsed ? 'w-16' : ''
+          }`}
+          style={{ 
+            width: sidebarCollapsed ? '64px' : `${sidebarWidth}px`,
+            minWidth: sidebarCollapsed ? '64px' : '200px',
+            maxWidth: sidebarCollapsed ? '64px' : '500px'
+          }}
+        >
           {/* Navigation */}
           <nav className="flex-shrink-0 px-4 py-6">
             <div className="space-y-2">
               <button
                 onClick={() => setActiveTab('agents')}
-                className={`w-full flex items-center px-4 py-3 rounded-lg font-medium text-sm transition-colors ${
+                className={`w-full flex items-center ${sidebarCollapsed ? 'px-2 py-3 justify-center' : 'px-4 py-3'} rounded-lg font-medium text-sm transition-colors ${
                   activeTab === 'agents'
                     ? 'bg-cyan-900 text-cyan-100 border border-cyan-700'
                     : 'text-gray-300 hover:text-white hover:bg-gray-800'
                 }`}
+                title={sidebarCollapsed ? "Agents" : ""}
               >
-                <CogIcon className="h-5 w-5 mr-3" />
-                Agents
+                <CogIcon className={`h-5 w-5 ${!sidebarCollapsed ? 'mr-3' : ''}`} />
+                {!sidebarCollapsed && 'Agents'}
               </button>
               <button
                 onClick={() => setActiveTab('workflows')}
-                className={`w-full flex items-center px-4 py-3 rounded-lg font-medium text-sm transition-colors ${
+                className={`w-full flex items-center ${sidebarCollapsed ? 'px-2 py-3 justify-center' : 'px-4 py-3'} rounded-lg font-medium text-sm transition-colors ${
                   activeTab === 'workflows'
                     ? 'bg-cyan-900 text-cyan-100 border border-cyan-700'
                     : 'text-gray-300 hover:text-white hover:bg-gray-800'
                 }`}
+                title={sidebarCollapsed ? "Workflows" : ""}
               >
-                <DocumentTextIcon className="h-5 w-5 mr-3" />
-                Workflows
+                <DocumentTextIcon className={`h-5 w-5 ${!sidebarCollapsed ? 'mr-3' : ''}`} />
+                {!sidebarCollapsed && 'Workflows'}
               </button>
               <button
                 onClick={() => setActiveTab('execute')}
-                className={`w-full flex items-center px-4 py-3 rounded-lg font-medium text-sm transition-colors ${
+                className={`w-full flex items-center ${sidebarCollapsed ? 'px-2 py-3 justify-center' : 'px-4 py-3'} rounded-lg font-medium text-sm transition-colors ${
                   activeTab === 'execute'
                     ? 'bg-cyan-900 text-cyan-100 border border-cyan-700'
                     : 'text-gray-300 hover:text-white hover:bg-gray-800'
                 }`}
+                title={sidebarCollapsed ? "Execute" : ""}
               >
-                <PlayIcon className="h-5 w-5 mr-3" />
-                Execute
+                <PlayIcon className={`h-5 w-5 ${!sidebarCollapsed ? 'mr-3' : ''}`} />
+                {!sidebarCollapsed && 'Execute'}
               </button>
             </div>
           </nav>
 
           {/* Status Panel */}
-          <div className="flex-1 px-4 pb-6">
-            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-              <h3 className="text-white font-medium mb-3">System Status</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Agents:</span>
-                  <span className="text-green-400">{agents.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Workflows:</span>
-                  <span className="text-green-400">{workflows.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Status:</span>
-                  <span className="text-green-400">Online</span>
+          {!sidebarCollapsed && (
+            <div className="flex-1 px-4 pb-6">
+              <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                <h3 className="text-white font-medium mb-3">System Status</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Agents:</span>
+                    <span className="text-green-400">{agents.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Workflows:</span>
+                    <span className="text-green-400">{workflows.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Status:</span>
+                    <span className="text-green-400">Online</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
+          
+          {/* Resize Handle */}
+          {!sidebarCollapsed && (
+            <div
+              className="absolute right-0 top-0 bottom-0 w-1 bg-gray-700 hover:bg-cyan-400 cursor-col-resize transition-colors group"
+              onMouseDown={startSidebarResize}
+            >
+              <div className="absolute right-0 top-1/2 transform -translate-y-1/2 w-3 h-8 bg-gray-600 group-hover:bg-cyan-400 rounded-l-md opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
+          )}
         </div>
 
         {/* Main Content - 80% */}
@@ -641,56 +739,19 @@ function App() {
 
             {/* Execute Tab */}
             {activeTab === 'execute' && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Execution Panel */}
-                <div>
+              <div id="execute-container" className="flex h-full relative"
+                   style={{ height: 'calc(100vh - 120px)' }}
+              >
+                {/* Left Panel - Input */}
+                <div 
+                  className="bg-white border-r border-gray-200 overflow-auto p-6"
+                  style={{ width: `${executePanelSplit}%` }}
+                >
                   <div className="mb-6">
                     <h2 className="text-2xl font-bold text-gray-900 mb-2">Execute AI Tasks</h2>
                     <p className="text-gray-600">Run agents or workflows with your data</p>
                   </div>
                   
-                  {/* Quick Examples */}
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mb-6">
-                    <h3 className="font-semibold text-gray-900 mb-4">Quick Start Examples</h3>
-                    <div className="grid grid-cols-2 gap-3">
-                      <button
-                        onClick={() => runExample('invoice')}
-                        className="px-4 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium"
-                      >
-                        Process Invoice
-                      </button>
-                      <button
-                        onClick={() => runExample('approval')}
-                        className="px-4 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium"
-                      >
-                        Approval Request
-                      </button>
-                      <button
-                        onClick={() => runExample('complaint')}
-                        className="px-4 py-3 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm font-medium"
-                      >
-                        Customer Complaint
-                      </button>
-                      <button
-                        onClick={() => runExample('financial')}
-                        className="px-4 py-3 bg-green-700 text-white rounded-lg hover:bg-green-600 transition-colors text-sm font-medium"
-                      >
-                        Financial Report
-                      </button>
-                      <button
-                        onClick={() => runExample('recruitment')}
-                        className="px-4 py-3 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm font-medium"
-                      >
-                        Screen Candidates
-                      </button>
-                      <button
-                        onClick={() => runExample('risk')}
-                        className="px-4 py-3 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium"
-                      >
-                        Risk Assessment
-                      </button>
-                    </div>
-                  </div>
 
                   {/* Agent Selection */}
                   <div className="mb-6">
@@ -867,9 +928,20 @@ function App() {
                     )}
                   </button>
                 </div>
+                
+                {/* Resize Handle */}
+                <div
+                  className="w-1 bg-gray-300 hover:bg-cyan-400 cursor-col-resize transition-colors flex-shrink-0 relative group"
+                  onMouseDown={startExecuteResize}
+                >
+                  <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 w-3 h-8 bg-gray-400 group-hover:bg-cyan-400 rounded-md opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
 
-                {/* Results Panel */}
-                <div>
+                {/* Right Panel - Results */}
+                <div 
+                  className="bg-gray-50 overflow-auto p-6"
+                  style={{ width: `${100 - executePanelSplit}%` }}
+                >
                   <div className="mb-6">
                     <h2 className="text-2xl font-bold text-gray-900 mb-2">Execution Results</h2>
                     <p className="text-gray-600">AI processing results and conversation history</p>
